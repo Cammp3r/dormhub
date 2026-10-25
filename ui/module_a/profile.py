@@ -10,16 +10,17 @@ class ProfilePage(ctk.CTkScrollableFrame):
         theme.page_title(self, "Мій профіль")
 
         head = theme.card(self)
-        initials = "".join(part[0] for part in user["full_name"].split()[:2])
+        full_name = repo.get_user_name(user)
+        initials = "".join(part[0] for part in full_name.split()[:2])
         ctk.CTkLabel(head, text=initials, width=72, height=72, corner_radius=36,
                      fg_color=theme.ACCENT, text_color="white",
                      font=theme.font(26, bold=True)).pack(side="left", padx=20, pady=20)
         info = ctk.CTkFrame(head, fg_color="transparent")
         info.pack(side="left", fill="x")
-        self.name_label = ctk.CTkLabel(info, text=user["full_name"], font=theme.font(20, bold=True), anchor="w")
+        self.name_label = ctk.CTkLabel(info, text=full_name, font=theme.font(20, bold=True), anchor="w")
         self.name_label.pack(anchor="w")
-        role = "Комендант" if user["role"] == "commandant" else "Студент"
-        ctk.CTkLabel(info, text=f"@{user['login']}  ·  {role}", text_color=theme.MUTED,
+        role = "Комендант" if any(a["user_id"] == user["user_id"] for a in repo.db.dorm_admins) else "Користувач"
+        ctk.CTkLabel(info, text=f"{user['email']}  ·  {role}", text_color=theme.MUTED,
                      anchor="w").pack(anchor="w")
 
         form = theme.card(self)
@@ -27,7 +28,7 @@ class ProfilePage(ctk.CTkScrollableFrame):
             row=0, column=0, columnspan=2, sticky="w", padx=20, pady=(16, 8))
 
         self.entries = {}
-        fields = [("full_name", "ПІБ"), ("faculty", "Факультет"), ("group", "Група")]
+        fields = [("first_name", "Ім'я"), ("last_name", "Прізвище"), ("email", "Email")]
         for i, (key, label) in enumerate(fields, start=1):
             ctk.CTkLabel(form, text=label, anchor="w", width=100).grid(row=i, column=0, sticky="w", padx=20, pady=6)
             entry = ctk.CTkEntry(form, width=320)
@@ -42,9 +43,9 @@ class ProfilePage(ctk.CTkScrollableFrame):
 
     def save(self):
         values = {k: e.get().strip() for k, e in self.entries.items()}
-        if not values["full_name"]:
-            self.status.configure(text="ПІБ не може бути порожнім", text_color="#EF4444")
+        if not all(values.values()):
+            self.status.configure(text="Усі поля мають бути заповнені", text_color="#EF4444")
             return
-        repo.update_profile(self.user["id"], **values)
-        self.name_label.configure(text=values["full_name"])
+        repo.update_profile(self.user["user_id"], **values)
+        self.name_label.configure(text=repo.get_user_name(self.user))
         self.status.configure(text="✓ Збережено", text_color="#10B981")

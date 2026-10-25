@@ -1,13 +1,25 @@
 import customtkinter as ctk
 from data import repository as repo
 from ui import theme
-from ui.module_a.login import LoginFrame
 from ui.module_a.profile import ProfilePage
 from ui.module_a.room import RoomPage
-from ui.module_b.chats import ChatsPage
-from ui.module_c.announcements import AnnouncementsPage
-from ui.module_c.events import EventsPage
-from ui.module_c.requests_page import RequestsPage
+
+
+class ChatsPage(ctk.CTkFrame):
+    title = "Чати"
+
+
+class AnnouncementsPage(ctk.CTkFrame):
+    title = "Оголошення"
+
+
+class EventsPage(ctk.CTkFrame):
+    title = "Події"
+
+
+class RequestsPage(ctk.CTkFrame):
+    title = "Заявки"
+
 
 PAGES = [
     ("💬  Чати", ChatsPage),
@@ -25,25 +37,12 @@ class App(ctk.CTk):
         self.title("DormHub — гуртожиток КПІ")
         self.geometry("1100x700")
         self.minsize(900, 560)
-        self.user = None
-        self.show_login()
+        self.user = repo.get_current_user()
+        self.build_main()
 
     def clear(self):
         for w in self.winfo_children():
             w.destroy()
-
-    def show_login(self):
-        self.clear()
-        LoginFrame(self, on_success=self.on_login).pack(fill="both", expand=True)
-
-    def on_login(self, user):
-        self.user = user
-        self.build_main()
-
-    def logout(self):
-        repo.logout()
-        self.user = None
-        self.show_login()
 
     def build_main(self):
         self.clear()
@@ -55,7 +54,7 @@ class App(ctk.CTk):
         sidebar.grid_propagate(False)
 
         ctk.CTkLabel(sidebar, text="🏠 DormHub", font=theme.font(22, bold=True)).pack(pady=(24, 4), padx=20, anchor="w")
-        ctk.CTkLabel(sidebar, text=self.user["full_name"], text_color=theme.MUTED,
+        ctk.CTkLabel(sidebar, text=repo.get_user_name(self.user), text_color=theme.MUTED,
                      font=theme.font(12)).pack(padx=20, anchor="w", pady=(0, 20))
 
         self.nav_buttons = {}
@@ -75,13 +74,10 @@ class App(ctk.CTk):
         theme_switch.pack(anchor="w", pady=(0, 10))
         if ctk.get_appearance_mode() == "Dark":
             theme_switch.select()
-        ctk.CTkButton(bottom, text="Вийти", fg_color="#EF4444", hover_color="#DC2626",
-                      command=self.logout).pack(fill="x")
-
         self.content = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
         self.content.grid(row=0, column=1, sticky="nsew")
 
-        self.open_page(ChatsPage)
+        self.open_page(RoomPage)
 
     def open_page(self, page_cls):
         for cls, btn in self.nav_buttons.items():
@@ -89,4 +85,14 @@ class App(ctk.CTk):
                           text_color="white" if cls is page_cls else ("gray10", "gray90"))
         for w in self.content.winfo_children():
             w.destroy()
-        page_cls(self.content, self.user).pack(fill="both", expand=True)
+        if page_cls in (RoomPage, ProfilePage):
+            page_cls(self.content, self.user).pack(fill="both", expand=True)
+            return
+        page = page_cls(self.content, fg_color="transparent")
+        ctk.CTkLabel(
+            page,
+            text=f"{page_cls.title}\n\nЦей розділ буде підключено разом із відповідними таблицями бази даних.",
+            text_color=theme.MUTED,
+            font=theme.font(16),
+        ).pack(expand=True)
+        page.pack(fill="both", expand=True)
