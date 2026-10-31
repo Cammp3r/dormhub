@@ -19,7 +19,7 @@ class ProfilePage(ctk.CTkScrollableFrame):
         info.pack(side="left", fill="x")
         self.name_label = ctk.CTkLabel(info, text=full_name, font=theme.font(20, bold=True), anchor="w")
         self.name_label.pack(anchor="w")
-        role = "Комендант" if any(a["user_id"] == user["user_id"] for a in repo.db.dorm_admins) else "Користувач"
+        role = "Комендант" if repo.is_dorm_admin(user["user_id"]) else "Користувач"
         ctk.CTkLabel(info, text=f"{user['email']}  ·  {role}", text_color=theme.MUTED,
                      anchor="w").pack(anchor="w")
 
@@ -47,5 +47,6 @@ class ProfilePage(ctk.CTkScrollableFrame):
             self.status.configure(text="Усі поля мають бути заповнені", text_color="#EF4444")
             return
         repo.update_profile(self.user["user_id"], **values)
+        self.user = repo.get_user(self.user["user_id"])
         self.name_label.configure(text=repo.get_user_name(self.user))
         self.status.configure(text="✓ Збережено", text_color="#10B981")
