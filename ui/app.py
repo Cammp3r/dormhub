@@ -3,6 +3,7 @@ from data import repository as repo
 from ui import theme
 from ui.module_a.profile import ProfilePage
 from ui.module_a.room import RoomPage
+from ui.module_c.parking import ParkingPage
 
 
 class ChatsPage(ctk.CTkFrame):
@@ -26,6 +27,7 @@ PAGES = [
     ("📢  Оголошення", AnnouncementsPage),
     ("🎉  Події", EventsPage),
     ("🛠  Заявки", RequestsPage),
+    ("🅿️  Паркінг", ParkingPage),
     ("🚪  Моя кімната", RoomPage),
     ("👤  Профіль", ProfilePage),
 ]
@@ -85,7 +87,7 @@ class App(ctk.CTk):
                           text_color="white" if cls is page_cls else ("gray10", "gray90"))
         for w in self.content.winfo_children():
             w.destroy()
-        if page_cls in (RoomPage, ProfilePage):
+        if page_cls in (RoomPage, ProfilePage, ParkingPage):
             page_cls(self.content, self.user).pack(fill="both", expand=True)
             return
         page = page_cls(self.content, fg_color="transparent")
