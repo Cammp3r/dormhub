@@ -1,90 +1,112 @@
-from datetime import datetime
+from datetime import date
 
-# ----------  люди і проживання ----------
+# Mock-дані повторюють таблиці та назви полів з db.sql.
 dorms = [
-    {"id": 1, "name": "Гуртожиток №7", "address": "вул. Політехнічна, 37"},
-    {"id": 2, "name": "Гуртожиток №19", "address": "вул. Борщагівська, 146"},
-]
-
-rooms = [
-    {"id": 1, "dorm_id": 1, "number": "412", "floor": 4, "capacity": 3},
-    {"id": 2, "dorm_id": 1, "number": "413", "floor": 4, "capacity": 2},
-    {"id": 3, "dorm_id": 2, "number": "105", "floor": 1, "capacity": 3},
+    {"dorm_id": 1, "dorm_number": 1, "address": "вул. Степана Бандери 1-б"},
+    {"dorm_id": 2, "dorm_number": 2, "address": "вул. Колотушкіна 1-а"},
+    {"dorm_id": 3, "dorm_number": 3, "address": "вул. Тараса Шевченка 1-в"},
+    {"dorm_id": 4, "dorm_number": 4, "address": "вул. Тараса Шевченка 2-в"},
 ]
 
 users = [
-    {"id": 1, "login": "camper", "password": "1234", "full_name": "Кемпер Іваненко",
-     "faculty": "ФІОТ", "group": "ІП-31", "room_id": 1, "role": "student"},
-    {"id": 2, "login": "olena", "password": "1234", "full_name": "Олена Коваль",
-     "faculty": "ФІОТ", "group": "ІП-31", "room_id": 1, "role": "student"},
-    {"id": 3, "login": "max", "password": "1234", "full_name": "Максим Шевчук",
-     "faculty": "ФПМ", "group": "КВ-22", "room_id": 1, "role": "student"},
-    {"id": 4, "login": "dmytro", "password": "1234", "full_name": "Дмитро Бойко",
-     "faculty": "ІАТЕ", "group": "ТВ-21", "room_id": 2, "role": "student"},
-    {"id": 5, "login": "admin", "password": "admin", "full_name": "Георгій Антонюк",
-     "faculty": "-", "group": "-", "room_id": None, "role": "commandant"},
+    {"user_id": 1, "first_name": "Іван", "last_name": "Петренко",
+     "email": "ivan.petrenko@example.com", "date_of_birth": date(2003, 5, 14),
+     "registration_date": date(2024, 9, 1), "status": "active", "dorm_id": 1},
+    {"user_id": 2, "first_name": "Марія", "last_name": "Коваль",
+     "email": "maria.koval@example.com", "date_of_birth": date(2002, 11, 2),
+     "registration_date": date(2024, 9, 1), "status": "active", "dorm_id": 1},
+    {"user_id": 3, "first_name": "Олег", "last_name": "Бондар",
+     "email": "oleg.bondar@example.com", "date_of_birth": date(2001, 3, 20),
+     "registration_date": date(2024, 9, 1), "status": "active", "dorm_id": 2},
+    {"user_id": 4, "first_name": "Анна", "last_name": "Сидоренко",
+     "email": "anna.sydorenko@example.com", "date_of_birth": date(2004, 7, 8),
+     "registration_date": date(2024, 9, 1), "status": "active", "dorm_id": 2},
+    {"user_id": 5, "first_name": "Сергій", "last_name": "Мельник",
+     "email": "sergiy.melnyk@example.com", "date_of_birth": date(1985, 1, 15),
+     "registration_date": date(2024, 8, 20), "status": "active", "dorm_id": 1},
+    {"user_id": 6, "first_name": "Ольга", "last_name": "Ткаченко",
+     "email": "olha.tkachenko@example.com", "date_of_birth": date(1990, 6, 22),
+     "registration_date": date(2024, 8, 20), "status": "active", "dorm_id": 1},
+    {"user_id": 7, "first_name": "Павло", "last_name": "Кравець",
+     "email": "pavlo.kravets@example.com", "date_of_birth": date(1988, 9, 30),
+     "registration_date": date(2024, 8, 20), "status": "active", "dorm_id": 3},
+    {"user_id": 8, "first_name": "Дмитро", "last_name": "Шевченко",
+     "email": "dmytro.shevchenko@example.com", "date_of_birth": date(2004, 2, 11),
+     "registration_date": date(2024, 9, 1), "status": "active", "dorm_id": None},
+    {"user_id": 9, "first_name": "Степан", "last_name": "Бендера",
+     "email": "stpbdn@gmail.com", "date_of_birth": date(2001, 9, 11),
+     "registration_date": date(2024, 8, 20), "status": "active", "dorm_id": 2},
+    {"user_id": 10, "first_name": "Бен", "last_name": "Мохамед",
+     "email": "ben@gmail.com", "date_of_birth": date(2001, 9, 11),
+     "registration_date": date(2024, 9, 1), "status": "active", "dorm_id": 2},
 ]
 
-# ---------- чати ----------
-chats = [
-    {"id": 1, "title": "Кімната 412", "is_group": True, "created_by": 1},
-    {"id": 2, "title": "4 поверх — гурт. 7", "is_group": True, "created_by": 2},
-    {"id": 3, "title": "Дмитро Бойко", "is_group": False, "created_by": 1},
-    {"id": 4, "title": "Оголошення від коменданта", "is_group": True, "created_by": 5},
+departments = [
+    {"department_id": 1, "department_name": "Комп'ютерні науки"},
+    {"department_id": 2, "department_name": "Економіка"},
+    {"department_id": 3, "department_name": "Іноземні мови"},
 ]
 
-chat_members = [
-    {"chat_id": 1, "user_id": 1}, {"chat_id": 1, "user_id": 2}, {"chat_id": 1, "user_id": 3},
-    {"chat_id": 2, "user_id": 1}, {"chat_id": 2, "user_id": 2}, {"chat_id": 2, "user_id": 3},
-    {"chat_id": 2, "user_id": 4},
-    {"chat_id": 3, "user_id": 1}, {"chat_id": 3, "user_id": 4},
-    {"chat_id": 4, "user_id": 1}, {"chat_id": 4, "user_id": 2}, {"chat_id": 4, "user_id": 5},
+rooms = [
+    {"room_id": 1, "dorm_id": 1, "room_number": "101", "floor": 1},
+    {"room_id": 2, "dorm_id": 1, "room_number": "102", "floor": 1},
+    {"room_id": 3, "dorm_id": 2, "room_number": "201", "floor": 2},
+    {"room_id": 4, "dorm_id": 2, "room_number": "202", "floor": 2},
+    {"room_id": 5, "dorm_id": 3, "room_number": "301", "floor": 3},
+    {"room_id": 6, "dorm_id": 3, "room_number": "228", "floor": 2},
 ]
 
-messages = [
-    {"id": 1, "chat_id": 1, "author_id": 2, "text": "Хто сьогодні виносить сміття?",
-     "sent_at": datetime(2026, 10, 13, 19, 2)},
-    {"id": 2, "chat_id": 1, "author_id": 3, "text": "Я вчора виносив 😅",
-     "sent_at": datetime(2026, 10, 13, 19, 5)},
-    {"id": 3, "chat_id": 1, "author_id": 1, "text": "Окей, я винесу",
-     "sent_at": datetime(2026, 10, 13, 19, 7)},
-    {"id": 4, "chat_id": 2, "author_id": 4, "text": "У когось є подовжувач?",
-     "sent_at": datetime(2026, 10, 14, 8, 40)},
-    {"id": 5, "chat_id": 3, "author_id": 4, "text": "Скинеш конспект з БД?",
-     "sent_at": datetime(2026, 10, 12, 21, 15)},
-    {"id": 6, "chat_id": 4, "author_id": 5, "text": "У п'ятницю з 10:00 не буде гарячої води.",
-     "sent_at": datetime(2026, 10, 14, 9, 0)},
+students = [
+    {"student_id": 1, "enrollment_year": 2022, "room_id": 1, "status": "enrolled", "user_id": 1},
+    {"student_id": 2, "enrollment_year": 2023, "room_id": 1, "status": "enrolled", "user_id": 2},
+    {"student_id": 3, "enrollment_year": 2021, "room_id": 3, "status": "graduated", "user_id": 3},
+    {"student_id": 4, "enrollment_year": 2022, "room_id": 4, "status": "on_leave", "user_id": 4},
+    {"student_id": 5, "enrollment_year": 2024, "room_id": None, "status": "enrolled", "user_id": 8},
 ]
 
-# ---------- життя гуртожитку ----------
-announcements = [
-    {"id": 1, "dorm_id": 1, "author_id": 5, "title": "Відключення гарячої води",
-     "body": "У п'ятницю 17.10 з 10:00 до 18:00 планові роботи.",
-     "created_at": datetime(2026, 10, 14, 9, 0)},
-    {"id": 2, "dorm_id": 1, "author_id": 5, "title": "Санітарна перевірка",
-     "body": "Перевірка кімнат 4–5 поверхів у понеділок. Приберіть, будь ласка.",
-     "created_at": datetime(2026, 10, 11, 12, 30)},
+dorm_admins = [
+    {"admin_id": 1, "user_id": 5, "dorm_id": 1},
+    {"admin_id": 2, "user_id": 6, "dorm_id": 1},
+    {"admin_id": 3, "user_id": 9, "dorm_id": 2},
+    {"admin_id": 4, "user_id": 7, "dorm_id": 3},
 ]
 
-events = [
-    {"id": 1, "dorm_id": 1, "title": "Турнір з настільного тенісу", "place": "Хол 1 поверху",
-     "starts_at": datetime(2026, 10, 18, 17, 0), "organizer_id": 3},
-    {"id": 2, "dorm_id": 1, "title": "Кіновечір", "place": "Кімната відпочинку",
-     "starts_at": datetime(2026, 10, 20, 20, 0), "organizer_id": 2},
+parking_slots = [
+    {"parking_slot_id": 1, "dorm_id": 1, "user_id": 1, "slot_number": "P-101"},
+    {"parking_slot_id": 2, "dorm_id": 1, "user_id": 2, "slot_number": "P-102"},
+    {"parking_slot_id": 3, "dorm_id": 2, "user_id": 3, "slot_number": "P-201"},
+    {"parking_slot_id": 4, "dorm_id": 2, "user_id": 4, "slot_number": "P-202"},
+    {"parking_slot_id": 5, "dorm_id": 1, "user_id": 5, "slot_number": "P-103"},
+    {"parking_slot_id": 6, "dorm_id": 2, "user_id": 9, "slot_number": "P-203"},
+    {"parking_slot_id": 7, "dorm_id": 3, "user_id": 7, "slot_number": "P-301"},
+    {"parking_slot_id": 8, "dorm_id": 3, "user_id": None, "slot_number": "P-302"},
+    {"parking_slot_id": 9, "dorm_id": 4, "user_id": None, "slot_number": "P-401"},
 ]
 
-event_participants = [
-    {"event_id": 1, "user_id": 3}, {"event_id": 1, "user_id": 4},
-    {"event_id": 2, "user_id": 2},
+courses = [
+    {"course_id": 1, "department_id": 1, "course_title": "Бази даних"},
+    {"course_id": 2, "department_id": 1, "course_title": "Алгоритми та структури даних"},
+    {"course_id": 3, "department_id": 2, "course_title": "Мікроекономіка"},
+    {"course_id": 4, "department_id": 3, "course_title": "Англійська мова для IT"},
 ]
 
-request_categories = ["Сантехніка", "Електрика", "Меблі", "Інтернет", "Інше"]
+enrollments = [
+    {"enrollment_id": 1, "student_id": 1, "course_id": 1, "enrollment_date": date(2022, 9, 1), "grade": None},
+    {"enrollment_id": 2, "student_id": 1, "course_id": 2, "enrollment_date": date(2022, 9, 1), "grade": None},
+    {"enrollment_id": 3, "student_id": 2, "course_id": 1, "enrollment_date": date(2023, 9, 1), "grade": None},
+    {"enrollment_id": 4, "student_id": 3, "course_id": 3, "enrollment_date": date(2021, 9, 1), "grade": 92},
+    {"enrollment_id": 5, "student_id": 4, "course_id": 4, "enrollment_date": date(2022, 9, 1), "grade": None},
+]
 
-maintenance_requests = [
-    {"id": 1, "room_id": 1, "author_id": 1, "category": "Сантехніка",
-     "description": "Тече кран у ванній", "status": "В роботі",
-     "created_at": datetime(2026, 10, 10, 14, 0)},
-    {"id": 2, "room_id": 1, "author_id": 2, "category": "Електрика",
-     "description": "Не працює розетка біля вікна", "status": "Нова",
-     "created_at": datetime(2026, 10, 13, 10, 20)},
+vacancies = [
+    {"vacancy_id": 1, "company_name": "EPAM", "job_name": "Junior Developer"},
+    {"vacancy_id": 2, "company_name": "Nova Poshta", "job_name": "Analyst"},
+    {"vacancy_id": 3, "company_name": "Rozetka", "job_name": "Support Specialist"},
+]
+
+applications = [
+    {"application_id": 1, "student_id": 1, "vacancy_id": 1, "application_date": date(2024, 3, 1), "status": "submitted"},
+    {"application_id": 2, "student_id": 1, "vacancy_id": 2, "application_date": date(2024, 3, 5), "status": "submitted"},
+    {"application_id": 3, "student_id": 2, "vacancy_id": 2, "application_date": date(2024, 3, 2), "status": "accepted"},
+    {"application_id": 4, "student_id": 3, "vacancy_id": 3, "application_date": date(2024, 2, 20), "status": "rejected"},
 ]
