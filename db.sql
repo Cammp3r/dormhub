@@ -1,4 +1,4 @@
-DROP TABLE IF EXISTS applications, vacancies, enrollments, courses, parking_slots, dorm_admins, students, rooms, dorms, departments, users CASCADE;
+DROP TABLE IF EXISTS room_chat_messages, room_chats, applications, vacancies, enrollments, courses, parking_slots, dorm_admins, students, rooms, dorms, departments, users CASCADE;
 DROP TYPE  IF EXISTS student_status, user_status, application_status CASCADE;
 
 
@@ -44,6 +44,19 @@ CREATE TABLE students (
     room_id         INTEGER REFERENCES rooms(room_id) ON DELETE RESTRICT,
     status          student_status NOT NULL DEFAULT 'enrolled',
     user_id         INTEGER NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE RESTRICT
+);
+
+CREATE TABLE room_chats (
+    room_chat_id SERIAL PRIMARY KEY,
+    room_id      INTEGER NOT NULL UNIQUE REFERENCES rooms(room_id) ON DELETE CASCADE
+);
+
+CREATE TABLE room_chat_messages (
+    message_id   BIGSERIAL PRIMARY KEY,
+    room_chat_id INTEGER NOT NULL REFERENCES room_chats(room_chat_id) ON DELETE CASCADE,
+    user_id      INTEGER NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT,
+    message      TEXT NOT NULL CHECK (message = trim(message) AND message <> ''),
+    sent_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE dorm_admins (
@@ -127,6 +140,9 @@ INSERT INTO rooms (dorm_id, room_number, floor) VALUES
     (2, '202', 2),
     (3, '301', 3),
     (3, '228', 2);
+
+INSERT INTO room_chats (room_id)
+SELECT room_id FROM rooms;
 
 INSERT INTO students (enrollment_year, room_id, status, user_id) VALUES
     (2022, 1,    'enrolled',  1),

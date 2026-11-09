@@ -3,11 +3,8 @@ from data import repository as repo
 from ui import theme
 from ui.module_a.profile import ProfilePage
 from ui.module_a.room import RoomPage
+from ui.module_b.chats import ChatsPage
 from ui.module_c.parking import ParkingPage
-
-
-class ChatsPage(ctk.CTkFrame):
-    title = "Чати"
 
 
 class AnnouncementsPage(ctk.CTkFrame):
@@ -110,7 +107,7 @@ class ApplicationsPage(ctk.CTkScrollableFrame):
 
 
 PAGES = [
-    ("💬  Чати", ChatsPage),
+    ("💬  Чати кімнат", ChatsPage),
     ("📢  Оголошення", AnnouncementsPage),
     ("🎉  Події", EventsPage),
     ("🎓  Факультети", DepartmentsPage),
@@ -178,6 +175,7 @@ class App(ctk.CTk):
         for w in self.content.winfo_children():
             w.destroy()
         if page_cls in (
+            ChatsPage,
             RoomPage,
             ProfilePage,
             ParkingPage,
