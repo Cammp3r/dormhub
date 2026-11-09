@@ -1,10 +1,33 @@
 from psycopg2.extras import RealDictCursor
 
 from db import get_db_connection
-from data import mock_data as db
 
 
 current_user = None
+
+
+def _fetch_all(query, parameters=()):
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(query, parameters)
+            return cursor.fetchall()
+    finally:
+        connection.close()
+
+
+def _fetch_one(query, parameters=()):
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(query, parameters)
+            return cursor.fetchone()
+    finally:
+        connection.close()
 
 
 def get_user(user_id):
@@ -94,11 +117,16 @@ def update_profile(user_id, first_name, last_name, email):
 
 
 def get_room_info(room_id):
-    room = next((room for room in db.rooms if room["room_id"] == room_id), None)
-    if room is None:
-        return None
-    dorm = next(dorm for dorm in db.dorms if dorm["dorm_id"] == room["dorm_id"])
-    return {**room, "dorm_number": dorm["dorm_number"], "address": dorm["address"]}
+    return _fetch_one(
+        """
+        SELECT r.room_id, r.dorm_id, r.room_number, r.floor,
+               d.dorm_number, d.address
+        FROM rooms AS r
+        INNER JOIN dorms AS d ON d.dorm_id = r.dorm_id
+        WHERE r.room_id = %s
+        """,
+        (room_id,),
+    )
 
 
 def get_roommates(room_id):
@@ -136,6 +164,72 @@ def is_dorm_admin(user_id):
             return cursor.fetchone() is not None
     finally:
         connection.close()
+
+
+def get_departments():
+    return _fetch_all(
+        """
+        SELECT department_id, department_name
+        FROM departments
+        ORDER BY department_name
+        """
+    )
+
+
+def get_enrollments(student_id=None):
+    query = """
+        SELECT e.enrollment_id, e.student_id, e.course_id,
+               e.enrollment_date, e.grade,
+               c.course_title, c.department_id, d.department_name
+        FROM enrollments AS e
+        INNER JOIN courses AS c ON c.course_id = e.course_id
+        INNER JOIN departments AS d ON d.department_id = c.department_id
+    """
+    parameters = ()
+    if student_id is not None:
+        query += " WHERE e.student_id = %s"
+        parameters = (student_id,)
+    query += " ORDER BY e.enrollment_date DESC, e.enrollment_id"
+    return _fetch_all(query, parameters)
+
+
+def get_vacancies():
+    return _fetch_all(
+        """
+        SELECT vacancy_id, company_name, job_name
+        FROM vacancies
+        ORDER BY vacancy_id
+        """
+    )
+
+
+def get_applications(student_id=None):
+    query = """
+        SELECT a.application_id, a.student_id, a.vacancy_id,
+               a.application_date, a.status,
+               v.company_name, v.job_name
+        FROM applications AS a
+        INNER JOIN vacancies AS v ON v.vacancy_id = a.vacancy_id
+    """
+    parameters = ()
+    if student_id is not None:
+        query += " WHERE a.student_id = %s"
+        parameters = (student_id,)
+    query += " ORDER BY a.application_date DESC, a.application_id"
+    return _fetch_all(query, parameters)
+
+
+def get_parking_slots():
+    return _fetch_all(
+        """
+        SELECT p.parking_slot_id, p.dorm_id, p.user_id, p.slot_number,
+               u.first_name, u.last_name, d.dorm_number
+        FROM parking_slots AS p
+        INNER JOIN dorms AS d ON d.dorm_id = p.dorm_id
+        LEFT JOIN users AS u ON u.user_id = p.user_id
+        ORDER BY p.dorm_id, p.slot_number
+        """
+    )
 
 
 def get_current_user():

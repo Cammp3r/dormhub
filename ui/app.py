@@ -18,15 +18,105 @@ class EventsPage(ctk.CTkFrame):
     title = "Події"
 
 
-class RequestsPage(ctk.CTkFrame):
-    title = "Заявки"
+class DepartmentsPage(ctk.CTkScrollableFrame):
+    title = "Факультети"
+
+    def __init__(self, master, user=None):
+        super().__init__(master, fg_color="transparent")
+        theme.page_title(self, "Факультети")
+        for department in repo.get_departments():
+            row = theme.card(self, pady=4)
+            ctk.CTkLabel(
+                row,
+                text=department["department_name"],
+                font=theme.font(15, bold=True),
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=14)
+
+
+class EnrollmentsPage(ctk.CTkScrollableFrame):
+    title = "Навчання"
+
+    def __init__(self, master, user):
+        super().__init__(master, fg_color="transparent")
+        theme.page_title(self, "Мої навчальні курси")
+        student = repo.get_student_for_user(user["user_id"])
+        enrollments = repo.get_enrollments(student["student_id"]) if student else []
+        if not enrollments:
+            ctk.CTkLabel(
+                self, text="Навчальних записів не знайдено.", text_color=theme.MUTED
+            ).pack(anchor="w", padx=24)
+        for enrollment in enrollments:
+            row = theme.card(self, pady=4)
+            ctk.CTkLabel(
+                row,
+                text=enrollment["course_title"],
+                font=theme.font(15, bold=True),
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(12, 2))
+            ctk.CTkLabel(
+                row,
+                text=f"{enrollment['department_name']}  ·  Оцінка: {enrollment['grade'] or 'ще немає'}",
+                text_color=theme.MUTED,
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(0, 12))
+
+
+class VacanciesPage(ctk.CTkScrollableFrame):
+    title = "Вакансії"
+
+    def __init__(self, master, user=None):
+        super().__init__(master, fg_color="transparent")
+        theme.page_title(self, "Вакансії")
+        for vacancy in repo.get_vacancies():
+            row = theme.card(self, pady=4)
+            ctk.CTkLabel(
+                row,
+                text=vacancy["job_name"],
+                font=theme.font(15, bold=True),
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(12, 2))
+            ctk.CTkLabel(
+                row, text=vacancy["company_name"], text_color=theme.MUTED, anchor="w"
+            ).pack(fill="x", padx=16, pady=(0, 12))
+
+
+class ApplicationsPage(ctk.CTkScrollableFrame):
+    title = "Мої заявки"
+
+    def __init__(self, master, user):
+        super().__init__(master, fg_color="transparent")
+        theme.page_title(self, "Мої заявки на вакансії")
+        student = repo.get_student_for_user(user["user_id"])
+        applications = repo.get_applications(student["student_id"]) if student else []
+        if not applications:
+            ctk.CTkLabel(
+                self, text="Заявок на вакансії не знайдено.", text_color=theme.MUTED
+            ).pack(anchor="w", padx=24)
+        for application in applications:
+            row = theme.card(self, pady=4)
+            ctk.CTkLabel(
+                row,
+                text=application["job_name"],
+                font=theme.font(15, bold=True),
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(12, 2))
+            ctk.CTkLabel(
+                row,
+                text=f"{application['company_name']}  ·  {application['status']}",
+                text_color=theme.MUTED,
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(0, 12))
 
 
 PAGES = [
     ("💬  Чати", ChatsPage),
     ("📢  Оголошення", AnnouncementsPage),
     ("🎉  Події", EventsPage),
-    ("🛠  Заявки", RequestsPage),
+    ("🎓  Факультети", DepartmentsPage),
+    ("📚  Навчання", EnrollmentsPage),
+    ("💼  Вакансії", VacanciesPage),
+    ("📝  Мої заявки", ApplicationsPage),
     ("🅿️  Паркінг", ParkingPage),
     ("🚪  Моя кімната", RoomPage),
     ("👤  Профіль", ProfilePage),
@@ -87,7 +177,15 @@ class App(ctk.CTk):
                           text_color="white" if cls is page_cls else ("gray10", "gray90"))
         for w in self.content.winfo_children():
             w.destroy()
-        if page_cls in (RoomPage, ProfilePage, ParkingPage):
+        if page_cls in (
+            RoomPage,
+            ProfilePage,
+            ParkingPage,
+            DepartmentsPage,
+            EnrollmentsPage,
+            VacanciesPage,
+            ApplicationsPage,
+        ):
             page_cls(self.content, self.user).pack(fill="both", expand=True)
             return
         page = page_cls(self.content, fg_color="transparent")
