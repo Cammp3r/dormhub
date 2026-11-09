@@ -1,133 +1,342 @@
-from datetime import datetime
-from data import mock_data as db
+from psycopg2.extras import RealDictCursor
+
+from db import get_db_connection
+
 
 current_user = None
 
 
-def _next_id(table):
-    return max((row["id"] for row in table), default=0) + 1
+def _fetch_all(query, parameters=()):
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(query, parameters)
+            return cursor.fetchall()
+    finally:
+        connection.close()
 
 
-# ===================== Модуль A =====================
-
-def login(login, password):
-    global current_user
-    for u in db.users:
-        if u["login"] == login and u["password"] == password:
-            current_user = u
-            return u
-    return None
-
-
-def logout():
-    global current_user
-    current_user = None
+def _fetch_one(query, parameters=()):
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(query, parameters)
+            return cursor.fetchone()
+    finally:
+        connection.close()
 
 
 def get_user(user_id):
-    return next((u for u in db.users if u["id"] == user_id), None)
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT user_id, first_name, last_name, email, date_of_birth,
+                       registration_date, status, dorm_id
+                FROM users
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            return cursor.fetchone()
+    finally:
+        connection.close()
 
 
 def get_all_users():
-    return list(db.users)
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT user_id, first_name, last_name, email, date_of_birth,
+                       registration_date, status, dorm_id
+                FROM users
+                ORDER BY user_id
+                """
+            )
+            return cursor.fetchall()
+    finally:
+        connection.close()
 
 
-def update_profile(user_id, full_name, faculty, group):
-    u = get_user(user_id)
-    u.update(full_name=full_name, faculty=faculty, group=group)
+def get_student_for_user(user_id):
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT student_id, enrollment_year, room_id, status, user_id
+                FROM students
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            return cursor.fetchone()
+    finally:
+        connection.close()
+
+
+def get_user_name(user):
+    return f"{user['first_name']} {user['last_name']}"
+
+
+def update_profile(user_id, first_name, last_name, email):
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE users
+                SET first_name = %s, last_name = %s, email = %s
+                WHERE user_id = %s
+                """,
+                (first_name, last_name, email, user_id),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError(f"Користувача з user_id={user_id} не знайдено")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def get_room_info(room_id):
-    room = next((r for r in db.rooms if r["id"] == room_id), None)
-    if room is None:
-        return None
-    dorm = next(d for d in db.dorms if d["id"] == room["dorm_id"])
-    return {**room, "dorm_name": dorm["name"], "dorm_address": dorm["address"]}
+    return _fetch_one(
+        """
+        SELECT r.room_id, r.dorm_id, r.room_number, r.floor,
+               d.dorm_number, d.address
+        FROM rooms AS r
+        INNER JOIN dorms AS d ON d.dorm_id = r.dorm_id
+        WHERE r.room_id = %s
+        """,
+        (room_id,),
+    )
 
 
 def get_roommates(room_id):
-    return [u for u in db.users if u["room_id"] == room_id]
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT u.user_id, u.first_name, u.last_name, u.email,
+                       u.date_of_birth, u.registration_date, u.status, u.dorm_id
+                FROM users AS u
+                INNER JOIN students AS s ON s.user_id = u.user_id
+                WHERE s.room_id = %s
+                ORDER BY u.user_id
+                """,
+                (room_id,),
+            )
+            return cursor.fetchall()
+    finally:
+        connection.close()
 
 
-# ===================== Модуль B =====================
-
-def get_chats_for_user(user_id):
-    ids = {m["chat_id"] for m in db.chat_members if m["user_id"] == user_id}
-    result = []
-    for c in db.chats:
-        if c["id"] in ids:
-            msgs = get_messages(c["id"])
-            last = msgs[-1] if msgs else None
-            result.append({**c, "last_message": last})
-    result.sort(key=lambda c: c["last_message"]["sent_at"] if c["last_message"] else datetime.min,
-                reverse=True)
-    return result
-
-
-def get_messages(chat_id):
-    rows = [m for m in db.messages if m["chat_id"] == chat_id]
-    rows.sort(key=lambda m: m["sent_at"])
-    return [{**m, "author_name": get_user(m["author_id"])["full_name"]} for m in rows]
+def is_dorm_admin(user_id):
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM dorm_admins WHERE user_id = %s LIMIT 1",
+                (user_id,),
+            )
+            return cursor.fetchone() is not None
+    finally:
+        connection.close()
 
 
-def get_chat_members(chat_id):
-    ids = [m["user_id"] for m in db.chat_members if m["chat_id"] == chat_id]
-    return [get_user(i) for i in ids]
+def get_departments():
+    return _fetch_all(
+        """
+        SELECT department_id, department_name
+        FROM departments
+        ORDER BY department_name
+        """
+    )
 
 
-def send_message(chat_id, author_id, text):
-    db.messages.append({"id": _next_id(db.messages), "chat_id": chat_id,
-                        "author_id": author_id, "text": text, "sent_at": datetime.now()})
+def get_enrollments(student_id=None):
+    query = """
+        SELECT e.enrollment_id, e.student_id, e.course_id,
+               e.enrollment_date, e.grade,
+               c.course_title, c.department_id, d.department_name
+        FROM enrollments AS e
+        INNER JOIN courses AS c ON c.course_id = e.course_id
+        INNER JOIN departments AS d ON d.department_id = c.department_id
+    """
+    parameters = ()
+    if student_id is not None:
+        query += " WHERE e.student_id = %s"
+        parameters = (student_id,)
+    query += " ORDER BY e.enrollment_date DESC, e.enrollment_id"
+    return _fetch_all(query, parameters)
 
 
-def create_group_chat(title, creator_id, member_ids):
-    chat_id = _next_id(db.chats)
-    db.chats.append({"id": chat_id, "title": title, "is_group": True, "created_by": creator_id})
-    for uid in set(member_ids) | {creator_id}:
-        db.chat_members.append({"chat_id": chat_id, "user_id": uid})
-    return chat_id
+def get_vacancies():
+    return _fetch_all(
+        """
+        SELECT vacancy_id, company_name, job_name
+        FROM vacancies
+        ORDER BY vacancy_id
+        """
+    )
 
 
-# ===================== Модуль C =====================
-
-def get_announcements():
-    rows = sorted(db.announcements, key=lambda a: a["created_at"], reverse=True)
-    return [{**a, "author_name": get_user(a["author_id"])["full_name"]} for a in rows]
-
-
-def add_announcement(author_id, title, body):
-    db.announcements.append({"id": _next_id(db.announcements), "dorm_id": 1,
-                             "author_id": author_id, "title": title, "body": body,
-                             "created_at": datetime.now()})
-
-
-def get_events():
-    result = []
-    for e in sorted(db.events, key=lambda e: e["starts_at"]):
-        ids = [p["user_id"] for p in db.event_participants if p["event_id"] == e["id"]]
-        result.append({**e, "participant_ids": ids})
-    return result
+def get_applications(student_id=None):
+    query = """
+        SELECT a.application_id, a.student_id, a.vacancy_id,
+               a.application_date, a.status,
+               v.company_name, v.job_name
+        FROM applications AS a
+        INNER JOIN vacancies AS v ON v.vacancy_id = a.vacancy_id
+    """
+    parameters = ()
+    if student_id is not None:
+        query += " WHERE a.student_id = %s"
+        parameters = (student_id,)
+    query += " ORDER BY a.application_date DESC, a.application_id"
+    return _fetch_all(query, parameters)
 
 
-def toggle_participation(event_id, user_id):
-    row = {"event_id": event_id, "user_id": user_id}
-    if row in db.event_participants:
-        db.event_participants.remove(row)
-    else:
-        db.event_participants.append(row)
+def get_parking_slots():
+    return _fetch_all(
+        """
+        SELECT p.parking_slot_id, p.dorm_id, p.user_id, p.slot_number,
+               u.first_name, u.last_name, d.dorm_number
+        FROM parking_slots AS p
+        INNER JOIN dorms AS d ON d.dorm_id = p.dorm_id
+        LEFT JOIN users AS u ON u.user_id = p.user_id
+        ORDER BY p.dorm_id, p.slot_number
+        """
+    )
 
 
-def get_request_categories():
-    return list(db.request_categories)
+def get_current_user():
+    return get_user(1)
 
 
-def get_requests_for_room(room_id):
-    rows = [r for r in db.maintenance_requests if r["room_id"] == room_id]
-    return sorted(rows, key=lambda r: r["created_at"], reverse=True)
+def get_room_chats_for_user(user_id):
+    return _fetch_all(
+        """
+        SELECT rc.room_chat_id AS id,
+               'Кімната ' || r.room_number AS title,
+               TRUE AS is_group,
+               (
+                   SELECT rcm.sent_at
+                   FROM room_chat_messages AS rcm
+                   WHERE rcm.room_chat_id = rc.room_chat_id
+                   ORDER BY rcm.sent_at DESC, rcm.message_id DESC
+                   LIMIT 1
+               ) AS last_sent_at,
+               (
+                   SELECT rcm.message
+                   FROM room_chat_messages AS rcm
+                   WHERE rcm.room_chat_id = rc.room_chat_id
+                   ORDER BY rcm.sent_at DESC, rcm.message_id DESC
+                   LIMIT 1
+               ) AS last_message
+        FROM room_chats AS rc
+        INNER JOIN rooms AS r ON r.room_id = rc.room_id
+        INNER JOIN students AS s ON s.room_id = r.room_id
+        WHERE s.user_id = %s
+        ORDER BY r.dorm_id, r.room_number
+        """,
+        (user_id,),
+    )
 
 
-def create_request(room_id, author_id, category, description):
-    db.maintenance_requests.append({"id": _next_id(db.maintenance_requests), "room_id": room_id,
-                                    "author_id": author_id, "category": category,
-                                    "description": description, "status": "Нова",
-                                    "created_at": datetime.now()})
+def get_room_chat_members(chat_id, user_id):
+    return _fetch_all(
+        """
+        SELECT u.user_id, u.first_name, u.last_name, u.email
+        FROM users AS u
+        INNER JOIN students AS s ON s.user_id = u.user_id
+        INNER JOIN room_chats AS rc ON rc.room_id = s.room_id
+        WHERE rc.room_chat_id = %s
+          AND EXISTS (
+              SELECT 1
+              FROM students AS current_student
+              INNER JOIN room_chats AS current_chat
+                  ON current_chat.room_id = current_student.room_id
+              WHERE current_student.user_id = %s
+                AND current_chat.room_chat_id = rc.room_chat_id
+          )
+        ORDER BY u.user_id
+        """,
+        (chat_id, user_id),
+    )
+
+
+def get_room_chat_messages(chat_id, user_id):
+    return _fetch_all(
+        """
+        SELECT rcm.message_id, rcm.user_id AS author_id, rcm.message AS text,
+               rcm.sent_at,
+               u.first_name || ' ' || u.last_name AS author_name
+        FROM room_chat_messages AS rcm
+        INNER JOIN users AS u ON u.user_id = rcm.user_id
+        WHERE rcm.room_chat_id = %s
+          AND EXISTS (
+              SELECT 1
+              FROM students AS current_student
+              INNER JOIN room_chats AS current_chat
+                  ON current_chat.room_id = current_student.room_id
+              WHERE current_student.user_id = %s
+                AND current_chat.room_chat_id = rcm.room_chat_id
+          )
+        ORDER BY rcm.sent_at, rcm.message_id
+        """,
+        (chat_id, user_id),
+    )
+
+
+def send_room_chat_message(chat_id, user_id, text):
+    text = text.strip()
+    if not text:
+        raise ValueError("Повідомлення не може бути порожнім")
+
+    connection = get_db_connection()
+    if connection is None:
+        raise RuntimeError("Не вдалося підключитися до бази даних")
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO room_chat_messages (room_chat_id, user_id, message)
+                SELECT rc.room_chat_id, %s, %s
+                FROM room_chats AS rc
+                INNER JOIN students AS s ON s.room_id = rc.room_id
+                WHERE rc.room_chat_id = %s
+                  AND s.user_id = %s
+                """,
+                (user_id, text, chat_id, user_id),
+            )
+            if cursor.rowcount == 0:
+                raise PermissionError("Користувач не має доступу до цього чату")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()

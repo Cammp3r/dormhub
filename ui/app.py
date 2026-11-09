@@ -1,19 +1,120 @@
 import customtkinter as ctk
 from data import repository as repo
 from ui import theme
-from ui.module_a.login import LoginFrame
 from ui.module_a.profile import ProfilePage
 from ui.module_a.room import RoomPage
 from ui.module_b.chats import ChatsPage
-from ui.module_c.announcements import AnnouncementsPage
-from ui.module_c.events import EventsPage
-from ui.module_c.requests_page import RequestsPage
+from ui.module_c.parking import ParkingPage
+
+
+class AnnouncementsPage(ctk.CTkFrame):
+    title = "Оголошення"
+
+
+class EventsPage(ctk.CTkFrame):
+    title = "Події"
+
+
+class DepartmentsPage(ctk.CTkScrollableFrame):
+    title = "Факультети"
+
+    def __init__(self, master, user=None):
+        super().__init__(master, fg_color="transparent")
+        theme.page_title(self, "Факультети")
+        for department in repo.get_departments():
+            row = theme.card(self, pady=4)
+            ctk.CTkLabel(
+                row,
+                text=department["department_name"],
+                font=theme.font(15, bold=True),
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=14)
+
+
+class EnrollmentsPage(ctk.CTkScrollableFrame):
+    title = "Навчання"
+
+    def __init__(self, master, user):
+        super().__init__(master, fg_color="transparent")
+        theme.page_title(self, "Мої навчальні курси")
+        student = repo.get_student_for_user(user["user_id"])
+        enrollments = repo.get_enrollments(student["student_id"]) if student else []
+        if not enrollments:
+            ctk.CTkLabel(
+                self, text="Навчальних записів не знайдено.", text_color=theme.MUTED
+            ).pack(anchor="w", padx=24)
+        for enrollment in enrollments:
+            row = theme.card(self, pady=4)
+            ctk.CTkLabel(
+                row,
+                text=enrollment["course_title"],
+                font=theme.font(15, bold=True),
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(12, 2))
+            ctk.CTkLabel(
+                row,
+                text=f"{enrollment['department_name']}  ·  Оцінка: {enrollment['grade'] or 'ще немає'}",
+                text_color=theme.MUTED,
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(0, 12))
+
+
+class VacanciesPage(ctk.CTkScrollableFrame):
+    title = "Вакансії"
+
+    def __init__(self, master, user=None):
+        super().__init__(master, fg_color="transparent")
+        theme.page_title(self, "Вакансії")
+        for vacancy in repo.get_vacancies():
+            row = theme.card(self, pady=4)
+            ctk.CTkLabel(
+                row,
+                text=vacancy["job_name"],
+                font=theme.font(15, bold=True),
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(12, 2))
+            ctk.CTkLabel(
+                row, text=vacancy["company_name"], text_color=theme.MUTED, anchor="w"
+            ).pack(fill="x", padx=16, pady=(0, 12))
+
+
+class ApplicationsPage(ctk.CTkScrollableFrame):
+    title = "Мої заявки"
+
+    def __init__(self, master, user):
+        super().__init__(master, fg_color="transparent")
+        theme.page_title(self, "Мої заявки на вакансії")
+        student = repo.get_student_for_user(user["user_id"])
+        applications = repo.get_applications(student["student_id"]) if student else []
+        if not applications:
+            ctk.CTkLabel(
+                self, text="Заявок на вакансії не знайдено.", text_color=theme.MUTED
+            ).pack(anchor="w", padx=24)
+        for application in applications:
+            row = theme.card(self, pady=4)
+            ctk.CTkLabel(
+                row,
+                text=application["job_name"],
+                font=theme.font(15, bold=True),
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(12, 2))
+            ctk.CTkLabel(
+                row,
+                text=f"{application['company_name']}  ·  {application['status']}",
+                text_color=theme.MUTED,
+                anchor="w",
+            ).pack(fill="x", padx=16, pady=(0, 12))
+
 
 PAGES = [
-    ("💬  Чати", ChatsPage),
+    ("💬  Чати кімнат", ChatsPage),
     ("📢  Оголошення", AnnouncementsPage),
     ("🎉  Події", EventsPage),
-    ("🛠  Заявки", RequestsPage),
+    ("🎓  Факультети", DepartmentsPage),
+    ("📚  Навчання", EnrollmentsPage),
+    ("💼  Вакансії", VacanciesPage),
+    ("📝  Мої заявки", ApplicationsPage),
+    ("🅿️  Паркінг", ParkingPage),
     ("🚪  Моя кімната", RoomPage),
     ("👤  Профіль", ProfilePage),
 ]
@@ -25,25 +126,12 @@ class App(ctk.CTk):
         self.title("DormHub — гуртожиток КПІ")
         self.geometry("1100x700")
         self.minsize(900, 560)
-        self.user = None
-        self.show_login()
+        self.user = repo.get_current_user()
+        self.build_main()
 
     def clear(self):
         for w in self.winfo_children():
             w.destroy()
-
-    def show_login(self):
-        self.clear()
-        LoginFrame(self, on_success=self.on_login).pack(fill="both", expand=True)
-
-    def on_login(self, user):
-        self.user = user
-        self.build_main()
-
-    def logout(self):
-        repo.logout()
-        self.user = None
-        self.show_login()
 
     def build_main(self):
         self.clear()
@@ -55,7 +143,7 @@ class App(ctk.CTk):
         sidebar.grid_propagate(False)
 
         ctk.CTkLabel(sidebar, text="🏠 DormHub", font=theme.font(22, bold=True)).pack(pady=(24, 4), padx=20, anchor="w")
-        ctk.CTkLabel(sidebar, text=self.user["full_name"], text_color=theme.MUTED,
+        ctk.CTkLabel(sidebar, text=repo.get_user_name(self.user), text_color=theme.MUTED,
                      font=theme.font(12)).pack(padx=20, anchor="w", pady=(0, 20))
 
         self.nav_buttons = {}
@@ -75,13 +163,10 @@ class App(ctk.CTk):
         theme_switch.pack(anchor="w", pady=(0, 10))
         if ctk.get_appearance_mode() == "Dark":
             theme_switch.select()
-        ctk.CTkButton(bottom, text="Вийти", fg_color="#EF4444", hover_color="#DC2626",
-                      command=self.logout).pack(fill="x")
-
         self.content = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
         self.content.grid(row=0, column=1, sticky="nsew")
 
-        self.open_page(ChatsPage)
+        self.open_page(RoomPage)
 
     def open_page(self, page_cls):
         for cls, btn in self.nav_buttons.items():
@@ -89,4 +174,23 @@ class App(ctk.CTk):
                           text_color="white" if cls is page_cls else ("gray10", "gray90"))
         for w in self.content.winfo_children():
             w.destroy()
-        page_cls(self.content, self.user).pack(fill="both", expand=True)
+        if page_cls in (
+            ChatsPage,
+            RoomPage,
+            ProfilePage,
+            ParkingPage,
+            DepartmentsPage,
+            EnrollmentsPage,
+            VacanciesPage,
+            ApplicationsPage,
+        ):
+            page_cls(self.content, self.user).pack(fill="both", expand=True)
+            return
+        page = page_cls(self.content, fg_color="transparent")
+        ctk.CTkLabel(
+            page,
+            text=f"{page_cls.title}\n\nЦей розділ буде підключено разом із відповідними таблицями бази даних.",
+            text_color=theme.MUTED,
+            font=theme.font(16),
+        ).pack(expand=True)
+        page.pack(fill="both", expand=True)
