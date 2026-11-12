@@ -233,7 +233,40 @@ def get_parking_slots():
 
 
 def get_current_user():
-    return get_user(1)
+    return current_user
+
+
+def login(first_name, last_name):
+    global current_user
+    current_user = None
+    first_name, last_name = first_name.strip(), last_name.strip()
+    if not first_name or not last_name:
+        raise ValueError("Введіть ім’я та прізвище")
+    if len(first_name) > 50 or len(last_name) > 50:
+        raise ValueError("Ім’я та прізвище мають містити до 50 символів")
+    users = _fetch_all(
+        """
+        SELECT user_id, first_name, last_name, email, date_of_birth,
+               registration_date, status, dorm_id
+        FROM users
+        WHERE lower(first_name) = lower(%s) AND lower(last_name) = lower(%s)
+        LIMIT 2
+        """,
+        (first_name, last_name),
+    )
+    if not users:
+        raise ValueError("Користувача з таким ім’ям та прізвищем не знайдено")
+    if len(users) > 1:
+        raise ValueError("Знайдено кілька акаунтів із цим ім’ям та прізвищем. Зверніться до адміністратора.")
+    if users[0]["status"] != "active":
+        raise ValueError("Цей акаунт заблоковано")
+    current_user = users[0]
+    return current_user
+
+
+def logout():
+    global current_user
+    current_user = None
 
 
 def get_room_chats_for_user(user_id):

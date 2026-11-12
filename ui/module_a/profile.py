@@ -19,9 +19,10 @@ class ProfilePage(ctk.CTkScrollableFrame):
         info.pack(side="left", fill="x")
         self.name_label = ctk.CTkLabel(info, text=full_name, font=theme.font(20, bold=True), anchor="w")
         self.name_label.pack(anchor="w")
-        role = "Комендант" if repo.is_dorm_admin(user["user_id"]) else "Користувач"
-        ctk.CTkLabel(info, text=f"{user['email']}  ·  {role}", text_color=theme.MUTED,
-                     anchor="w").pack(anchor="w")
+        self.role = "Адміністратор" if repo.is_dorm_admin(user["user_id"]) else "Користувач"
+        self.details_label = ctk.CTkLabel(
+            info, text=f"{user['email']}  ·  {self.role}", text_color=theme.MUTED, anchor="w")
+        self.details_label.pack(anchor="w")
 
         form = theme.card(self)
         ctk.CTkLabel(form, text="Редагувати дані", font=theme.font(16, bold=True)).grid(
@@ -47,6 +48,8 @@ class ProfilePage(ctk.CTkScrollableFrame):
             self.status.configure(text="Усі поля мають бути заповнені", text_color="#EF4444")
             return
         repo.update_profile(self.user["user_id"], **values)
-        self.user = repo.get_user(self.user["user_id"])
+        self.user.update(values)
         self.name_label.configure(text=repo.get_user_name(self.user))
+        self.details_label.configure(text=f"{self.user['email']}  ·  {self.role}")
+        self.winfo_toplevel().sidebar_name.configure(text=repo.get_user_name(self.user))
         self.status.configure(text="✓ Збережено", text_color="#10B981")

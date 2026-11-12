@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from psycopg2 import Error as DatabaseError
 from data import repository as repo
 from ui import theme
 from ui.module_a.profile import ProfilePage
@@ -126,15 +127,60 @@ class App(ctk.CTk):
         self.title("DormHub — гуртожиток КПІ")
         self.geometry("1100x700")
         self.minsize(900, 560)
-        self.user = repo.get_current_user()
-        self.build_main()
+        self.user = None
+        self.build_login()
 
     def clear(self):
         for w in self.winfo_children():
             w.destroy()
 
-    def build_main(self):
+    def build_login(self):
         self.clear()
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=0)
+        self.grid_rowconfigure(0, weight=1)
+        panel = ctk.CTkFrame(self, corner_radius=16)
+        panel.grid(row=0, column=0, padx=24, pady=24)
+        ctk.CTkLabel(panel, text="🏠 DormHub", font=theme.font(28, bold=True)).pack(
+            padx=32, pady=(28, 8))
+        ctk.CTkLabel(panel, text="Вхід до акаунта", font=theme.font(18)).pack(pady=(0, 16))
+        ctk.CTkLabel(panel, text="Ім’я", anchor="w").pack(fill="x", padx=32)
+        self.first_name_entry = ctk.CTkEntry(panel, width=360, height=40)
+        self.first_name_entry.pack(padx=32, pady=(4, 12))
+        ctk.CTkLabel(panel, text="Прізвище", anchor="w").pack(fill="x", padx=32)
+        self.last_name_entry = ctk.CTkEntry(panel, width=360, height=40)
+        self.last_name_entry.pack(padx=32, pady=(4, 12))
+        self.login_status = ctk.CTkLabel(
+            panel, text="", text_color="#EF4444", wraplength=360)
+        self.login_status.pack(padx=32, pady=4)
+        ctk.CTkButton(panel, text="Увійти", height=40, width=360,
+                      command=self.login).pack(padx=32, pady=(4, 28))
+        self.first_name_entry.bind("<Return>", lambda event: self.last_name_entry.focus_set())
+        self.last_name_entry.bind("<Return>", lambda event: self.login())
+        self.first_name_entry.focus_set()
+
+    def login(self):
+        try:
+            self.user = repo.login(self.first_name_entry.get(), self.last_name_entry.get())
+        except ValueError as error:
+            self.login_status.configure(text=str(error))
+            return
+        except (RuntimeError, DatabaseError):
+            self.login_status.configure(text="Не вдалося увійти. Перевірте підключення до бази даних.")
+            return
+        self.build_main()
+
+    def logout(self):
+        repo.logout()
+        self.user = None
+        self.build_login()
+
+    def build_main(self):
+        if self.user is None:
+            self.build_login()
+            return
+        self.clear()
+        self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
@@ -143,8 +189,9 @@ class App(ctk.CTk):
         sidebar.grid_propagate(False)
 
         ctk.CTkLabel(sidebar, text="🏠 DormHub", font=theme.font(22, bold=True)).pack(pady=(24, 4), padx=20, anchor="w")
-        ctk.CTkLabel(sidebar, text=repo.get_user_name(self.user), text_color=theme.MUTED,
-                     font=theme.font(12)).pack(padx=20, anchor="w", pady=(0, 20))
+        self.sidebar_name = ctk.CTkLabel(sidebar, text=repo.get_user_name(self.user), text_color=theme.MUTED,
+                     font=theme.font(12))
+        self.sidebar_name.pack(padx=20, anchor="w", pady=(0, 20))
 
         self.nav_buttons = {}
         for text, page_cls in PAGES:
@@ -157,6 +204,8 @@ class App(ctk.CTk):
 
         bottom = ctk.CTkFrame(sidebar, fg_color="transparent")
         bottom.pack(side="bottom", fill="x", padx=12, pady=16)
+        ctk.CTkButton(bottom, text="Вийти з акаунта", command=self.logout).pack(
+            fill="x", pady=(0, 12))
         theme_switch = ctk.CTkSwitch(bottom, text="Темна тема",
                                      command=lambda: ctk.set_appearance_mode(
                                          "dark" if theme_switch.get() else "light"))
@@ -169,6 +218,9 @@ class App(ctk.CTk):
         self.open_page(RoomPage)
 
     def open_page(self, page_cls):
+        if self.user is None:
+            self.build_login()
+            return
         for cls, btn in self.nav_buttons.items():
             btn.configure(fg_color=theme.ACCENT if cls is page_cls else "transparent",
                           text_color="white" if cls is page_cls else ("gray10", "gray90"))
