@@ -1,6 +1,8 @@
 import customtkinter as ctk
 from data import repository as repo
 from ui import theme
+from ui.forms import show_error
+from psycopg2 import Error as DatabaseError
 
 
 class ProfilePage(ctk.CTkScrollableFrame):
@@ -47,7 +49,11 @@ class ProfilePage(ctk.CTkScrollableFrame):
         if not all(values.values()):
             self.status.configure(text="Усі поля мають бути заповнені", text_color="#EF4444")
             return
-        repo.update_profile(self.user["user_id"], **values)
+        try:
+            repo.update_profile(self.user["user_id"], **values)
+        except (ValueError, RuntimeError, PermissionError, DatabaseError) as error:
+            show_error(self, error)
+            return
         self.user.update(values)
         self.name_label.configure(text=repo.get_user_name(self.user))
         self.details_label.configure(text=f"{self.user['email']}  ·  {self.role}")

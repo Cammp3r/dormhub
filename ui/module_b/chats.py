@@ -2,6 +2,8 @@ import customtkinter as ctk
 
 from data import repository as repo
 from ui import theme
+from ui.forms import show_error
+from psycopg2 import Error as DatabaseError
 
 
 class ChatsPage(ctk.CTkFrame):
@@ -178,9 +180,13 @@ class ChatsPage(ctk.CTkFrame):
         text = self.input.get().strip()
         if not text:
             return
-        repo.send_room_chat_message(
-            self.current_chat_id, self.user["user_id"], text
-        )
+        try:
+            repo.send_room_chat_message(
+                self.current_chat_id, self.user["user_id"], text
+            )
+        except (ValueError, RuntimeError, PermissionError, DatabaseError) as error:
+            show_error(self, error)
+            return
         self.input.delete(0, "end")
         self.render_messages()
         self.render_chat_list()

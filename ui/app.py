@@ -6,14 +6,11 @@ from ui.module_a.profile import ProfilePage
 from ui.module_a.room import RoomPage
 from ui.module_b.chats import ChatsPage
 from ui.module_c.parking import ParkingPage
-
-
-class AnnouncementsPage(ctk.CTkFrame):
-    title = "Оголошення"
-
-
-class EventsPage(ctk.CTkFrame):
-    title = "Події"
+from ui.module_c.announcements import AnnouncementsPage
+from ui.module_c.events import EventsPage
+from ui.module_c.requests_page import RequestsPage
+from ui.admin import AdminPage
+from ui.forms import show_error
 
 
 class DepartmentsPage(ctk.CTkScrollableFrame):
@@ -111,6 +108,7 @@ PAGES = [
     ("💬  Чати кімнат", ChatsPage),
     ("📢  Оголошення", AnnouncementsPage),
     ("🎉  Події", EventsPage),
+    ("🔧  Мої звернення", RequestsPage),
     ("🎓  Факультети", DepartmentsPage),
     ("📚  Навчання", EnrollmentsPage),
     ("💼  Вакансії", VacanciesPage),
@@ -194,8 +192,13 @@ class App(ctk.CTk):
         self.sidebar_name.pack(padx=20, anchor="w", pady=(0, 20))
 
         self.nav_buttons = {}
-        for text, page_cls in PAGES:
-            btn = ctk.CTkButton(sidebar, text=text, anchor="w", height=40, corner_radius=8,
+        navigation = list(PAGES)
+        if repo.is_dorm_admin(self.user['user_id']):
+            navigation.insert(0, ('⚙  Адміністрування', AdminPage))
+        nav = ctk.CTkScrollableFrame(sidebar, fg_color='transparent')
+        nav.pack(fill='both', expand=True)
+        for text, page_cls in navigation:
+            btn = ctk.CTkButton(nav, text=text, anchor="w", height=40, corner_radius=8,
                                 fg_color="transparent", text_color=("gray10", "gray90"),
                                 hover_color=("gray80", "gray25"), font=theme.font(14),
                                 command=lambda p=page_cls: self.open_page(p))
@@ -226,23 +229,16 @@ class App(ctk.CTk):
                           text_color="white" if cls is page_cls else ("gray10", "gray90"))
         for w in self.content.winfo_children():
             w.destroy()
-        if page_cls in (
-            ChatsPage,
-            RoomPage,
-            ProfilePage,
-            ParkingPage,
-            DepartmentsPage,
-            EnrollmentsPage,
-            VacanciesPage,
-            ApplicationsPage,
-        ):
+        try:
+            fresh_user = repo.get_user(self.user['user_id'])
+            if fresh_user is None or fresh_user['status'] != 'active':
+                self.logout()
+                return
+            self.user.update(fresh_user)
             page_cls(self.content, self.user).pack(fill="both", expand=True)
-            return
-        page = page_cls(self.content, fg_color="transparent")
-        ctk.CTkLabel(
-            page,
-            text=f"{page_cls.title}\n\nЦей розділ буде підключено разом із відповідними таблицями бази даних.",
-            text_color=theme.MUTED,
-            font=theme.font(16),
-        ).pack(expand=True)
-        page.pack(fill="both", expand=True)
+        except (RuntimeError, PermissionError, ValueError, DatabaseError) as error:
+            for widget in self.content.winfo_children():
+                widget.destroy()
+            show_error(self, error)
+            ctk.CTkButton(self.content, text='Повторити завантаження',
+                          command=lambda: self.open_page(page_cls)).pack(pady=24)
