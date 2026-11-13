@@ -313,8 +313,50 @@ def logout():
 
 
 # Операції адміністрації та спільноти. Права перевіряються при кожному запиті.
-REQUEST_CATEGORIES = ["Сантехніка", "Електрика", "Меблі", "Інтернет", "Прибирання", "Інше"]
-REQUEST_STATUSES = ["Нова", "Прийнята", "В роботі", "Виконана", "Закрита", "Скасована"]
+def get_request_categories():
+    return [row['name'] for row in _fetch_all(
+        'SELECT name FROM request_categories ORDER BY sort_order, name')]
+
+
+def get_request_statuses():
+    return [row['name'] for row in _fetch_all(
+        'SELECT name FROM request_statuses ORDER BY sort_order, name')]
+
+
+def get_user_statuses():
+    return [row['status'] for row in _fetch_all(
+        'SELECT unnest(enum_range(NULL::user_status))::text AS status')]
+
+
+def setup_first_admin(dorm_number, address, first_name, last_name, email):
+    """Початкове налаштування через локальний CLI з доступом до БД, не через вхід у UI."""
+    try:
+        dorm_number = int(dorm_number)
+    except ValueError:
+        raise ValueError('Номер гуртожитку має бути цілим числом') from None
+    if dorm_number < 1:
+        raise ValueError('Номер гуртожитку має бути більшим за нуль')
+    address = _required(address, 'Адреса', 150)
+    first_name = _required(first_name, 'Ім’я', 50)
+    last_name = _required(last_name, 'Прізвище', 50)
+    email = _required(email, 'Email', 150)
+    with _transaction() as cursor:
+        # Першого адміністратора можна створити лише один раз, зокрема при одночасному запуску CLI.
+        cursor.execute('LOCK TABLE dorm_admins IN EXCLUSIVE MODE')
+        cursor.execute('SELECT 1 FROM dorm_admins LIMIT 1')
+        if cursor.fetchone():
+            raise ValueError('Адміністратора вже налаштовано. Використайте наявний акаунт.')
+        cursor.execute('INSERT INTO dorms (dorm_number, address) VALUES (%s, %s) '
+                       'ON CONFLICT (dorm_number) DO NOTHING', (dorm_number, address))
+        cursor.execute('SELECT dorm_id, address FROM dorms WHERE dorm_number=%s', (dorm_number,))
+        dorm = cursor.fetchone()
+        if dorm['address'] != address:
+            raise ValueError('Гуртожиток із цим номером уже має іншу адресу')
+        cursor.execute('''INSERT INTO users (first_name, last_name, email, dorm_id)
+            VALUES (%s, %s, %s, %s) RETURNING user_id''', (first_name, last_name, email, dorm['dorm_id']))
+        user_id = cursor.fetchone()['user_id']
+        cursor.execute('INSERT INTO dorm_admins (user_id, dorm_id) VALUES (%s, %s)', (user_id, dorm['dorm_id']))
+        return user_id
 
 
 def get_admin_residents(search="", status="Усі", room_id=None):
@@ -368,7 +410,7 @@ def save_resident(first_name, last_name, email, birth_date="", enrollment_year="
 
 def set_resident_status(user_id, status, reason):
     reason = _required(reason, "Причина", 1000)
-    if status not in ('active', 'blocked'):
+    if status not in get_user_statuses():
         raise ValueError("Невідомий статус")
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
@@ -550,22 +592,27 @@ def toggle_participation(event_id):
 
 
 def create_request(category, description):
-    if category not in REQUEST_CATEGORIES:
-        raise ValueError("Оберіть категорію")
     description = _required(description, "Опис проблеми", 10000)
     with _transaction() as cursor:
         actor = _actor(cursor)
+        cursor.execute('SELECT name FROM request_categories WHERE name=%s FOR SHARE', (category,))
+        if not cursor.fetchone():
+            raise ValueError("Оберіть наявну категорію звернення")
+        cursor.execute('SELECT name FROM request_statuses WHERE is_initial FOR SHARE')
+        initial = cursor.fetchone()
+        if initial is None:
+            raise ValueError('У базі не налаштовано початковий статус звернення')
         cursor.execute("""SELECT s.room_id FROM students s JOIN rooms r ON r.room_id=s.room_id
             WHERE s.user_id=%s AND r.dorm_id=%s FOR SHARE OF s""", (actor['user_id'], actor['dorm_id']))
         student = cursor.fetchone()
         if not student:
             raise ValueError("Звернення можуть подавати лише заселені мешканці")
-        cursor.execute("""INSERT INTO maintenance_requests (dorm_id, room_id, author_id, category, description)
-            VALUES (%s, %s, %s, %s, %s) RETURNING request_id""",
-                       (actor['dorm_id'], student['room_id'], actor['user_id'], category, description))
+        cursor.execute("""INSERT INTO maintenance_requests (dorm_id, room_id, author_id, category, description, status)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING request_id""",
+                       (actor['dorm_id'], student['room_id'], actor['user_id'], category, description, initial['name']))
         request_id = cursor.fetchone()['request_id']
         cursor.execute("""INSERT INTO request_status_history (request_id, changed_by, status, response)
-            VALUES (%s, %s, 'Нова', '')""", (request_id, actor['user_id']))
+            VALUES (%s, %s, %s, '')""", (request_id, actor['user_id'], initial['name']))
 
 
 def get_requests(admin=False, status="Усі"):
@@ -588,11 +635,12 @@ def get_requests(admin=False, status="Усі"):
 
 
 def update_request(request_id, status, response):
-    if status not in REQUEST_STATUSES:
-        raise ValueError("Невідомий статус звернення")
     response = _required(response, "Відповідь / причина зміни", 10000)
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
+        cursor.execute('SELECT name FROM request_statuses WHERE name=%s FOR SHARE', (status,))
+        if not cursor.fetchone():
+            raise ValueError("Невідомий статус звернення")
         cursor.execute("""UPDATE maintenance_requests SET status=%s, response=%s, updated_at=CURRENT_TIMESTAMP
             WHERE request_id=%s AND dorm_id=%s""", (status, response, request_id, actor['dorm_id']))
         if not cursor.rowcount:

@@ -15,11 +15,11 @@ class RequestsPage(DataPage):
     def render(self):
         self.clear('Звернення гуртожитку' if self.admin else 'Мої звернення')
         if self.admin:
-            menu = ctk.CTkOptionMenu(self, values=['Усі'] + repo.REQUEST_STATUSES, command=self.filter)
+            menu = ctk.CTkOptionMenu(self, values=['Усі'] + repo.get_request_statuses(), command=self.filter)
             menu.set(self.status_filter)
             menu.pack(anchor='w', padx=24, pady=4)
         else:
-            button(self, 'Створити звернення', self.create)
+            button(self, 'Створити звернення', lambda: self.guard(self.create))
         rows = repo.get_requests(admin=self.admin, status=self.status_filter)
         if not rows:
             self.empty()
@@ -32,22 +32,26 @@ class RequestsPage(DataPage):
                 label(card, f"{entry['changed_at']:%d.%m.%Y %H:%M} · {entry['status']} · "
                       f"{entry['changed_by_name']}\n{entry['response']}")
             if self.admin:
-                button(card, 'Опрацювати', lambda r=row: self.edit(r))
+                button(card, 'Опрацювати', lambda r=row: self.guard(lambda: self.edit(r)))
 
     def filter(self, value):
         self.status_filter = value
         self.run(lambda: None)
 
     def create(self):
+        categories = repo.get_request_categories()
+        if not categories:
+            self.empty('У базі немає категорій звернень. Зверніться до адміністрації.')
+            return
         def save(values):
             repo.create_request(**values)
         Form(self, 'Нове звернення', [
-            ('category', 'Категорія', repo.REQUEST_CATEGORIES[0], repo.REQUEST_CATEGORIES),
+            ('category', 'Категорія', categories[0], categories),
             ('description', 'Опишіть проблему', '', 'text')], save, self.render)
 
     def edit(self, row):
         def save(values):
             repo.update_request(row['request_id'], **values)
         Form(self, f"Звернення №{row['request_id']}", [
-            ('status', 'Статус', row['status'], repo.REQUEST_STATUSES),
+            ('status', 'Статус', row['status'], repo.get_request_statuses()),
             ('response', 'Відповідь / причина зміни', '', 'text')], save, self.render)

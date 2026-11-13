@@ -11,14 +11,11 @@ class ParkingPage(ctk.CTkScrollableFrame):
         super().__init__(master, fg_color="transparent")
         theme.page_title(self, "Паркувальні місця")
 
-        ctk.CTkLabel(
-            self,
-            text="Дані паркінгу завантажені з бази даних.",
-            text_color=theme.MUTED,
-            anchor="w",
-        ).pack(fill="x", padx=24, pady=(0, 12))
-
-        for slot in repo.get_parking_slots():
+        slots = repo.get_parking_slots()
+        if not slots:
+            ctk.CTkLabel(self, text='Паркувальних місць у базі поки немає.',
+                         text_color=theme.MUTED).pack(anchor='w', padx=24)
+        for slot in slots:
             owner_name = (
                 f"{slot['first_name']} {slot['last_name']}"
                 if slot["user_id"]

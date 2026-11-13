@@ -7,9 +7,6 @@ OTHER_BUBBLE = ("#E5E7EB", "#374151")
 CARD_BG = ("#F3F4F6", "#1F2937")
 MUTED = ("#6B7280", "#9CA3AF")
 
-STATUS_COLORS = {"Нова": "#F59E0B", "В роботі": "#3B82F6", "Виконано": "#10B981"}
-
-
 def font(size=14, bold=False):
     return ctk.CTkFont(family="Segoe UI", size=size, weight="bold" if bold else "normal")
 

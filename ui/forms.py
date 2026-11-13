@@ -13,7 +13,7 @@ def show_error(parent, error):
             '23505': 'Такий email або номер кімнати вже існує.',
             '23514': 'Перевірте формат і допустимі значення полів, зокрема email.',
             '23503': 'Запис пов’язаний з іншими даними. Оновіть сторінку.',
-        }.get(code, 'Помилка бази даних. Перевірте підключення та виконайте актуальний db.sql.')
+        }.get(code, 'Помилка бази даних. Перевірте підключення й оновлення схеми за інструкцією в README.')
     else:
         text = str(error)
     messagebox.showerror('DormHub', text, parent=parent)
@@ -25,9 +25,14 @@ class DataPage(ctk.CTkScrollableFrame):
         self.user = user
 
     def run(self, action):
-        try:
+        def refresh():
             action()
             self.render()
+        self.guard(refresh)
+
+    def guard(self, action):
+        try:
+            action()
         except (ValueError, RuntimeError, PermissionError, DatabaseError) as error:
             show_error(self, error)
 

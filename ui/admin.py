@@ -23,7 +23,7 @@ class ResidentsPage(DataPage):
         self.search_entry.insert(0, self.search)
         self.search_entry.pack(fill='x', padx=16, pady=8)
         self.search_entry.bind('<Return>', lambda event: self.apply_filters())
-        self.status_menu = ctk.CTkOptionMenu(filters, values=['Усі', 'active', 'blocked'])
+        self.status_menu = ctk.CTkOptionMenu(filters, values=['Усі'] + repo.get_user_statuses())
         self.status_menu.set(self.status_filter)
         self.status_menu.pack(side='left', padx=16, pady=8)
         self.room_menu = ctk.CTkOptionMenu(filters, values=list(self.room_choices))
@@ -96,8 +96,8 @@ class RoomsPage(DataPage):
             repo.save_room(room_id=row.get('room_id'), **values)
         Form(self, 'Кімната', [
             ('room_number', 'Номер кімнати', row.get('room_number', ''), None),
-            ('floor', 'Поверх', row.get('floor', 1), None),
-            ('capacity', 'Місткість', row.get('capacity', 4), None),
+            ('floor', 'Поверх', row.get('floor', ''), None),
+            ('capacity', 'Місткість', row.get('capacity', ''), None),
             ('availability', 'Поселення', 'Відкрита' if row.get('is_available', True) else 'Закрита',
              ['Відкрита', 'Закрита'])], save, self.render)
 

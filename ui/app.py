@@ -19,7 +19,10 @@ class DepartmentsPage(ctk.CTkScrollableFrame):
     def __init__(self, master, user=None):
         super().__init__(master, fg_color="transparent")
         theme.page_title(self, "Факультети")
-        for department in repo.get_departments():
+        departments = repo.get_departments()
+        if not departments:
+            ctk.CTkLabel(self, text='Факультетів у базі поки немає.', text_color=theme.MUTED).pack(anchor='w', padx=24)
+        for department in departments:
             row = theme.card(self, pady=4)
             ctk.CTkLabel(
                 row,
@@ -63,7 +66,10 @@ class VacanciesPage(ctk.CTkScrollableFrame):
     def __init__(self, master, user=None):
         super().__init__(master, fg_color="transparent")
         theme.page_title(self, "Вакансії")
-        for vacancy in repo.get_vacancies():
+        vacancies = repo.get_vacancies()
+        if not vacancies:
+            ctk.CTkLabel(self, text='Вакансій у базі поки немає.', text_color=theme.MUTED).pack(anchor='w', padx=24)
+        for vacancy in vacancies:
             row = theme.card(self, pady=4)
             ctk.CTkLabel(
                 row,
@@ -122,7 +128,7 @@ PAGES = [
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("DormHub — гуртожиток КПІ")
+        self.title("DormHub")
         self.geometry("1100x700")
         self.minsize(900, 560)
         self.user = None
