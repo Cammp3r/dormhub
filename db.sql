@@ -1,4 +1,6 @@
-DROP TABLE IF EXISTS room_chat_messages, room_chats, applications, vacancies, enrollments, courses, parking_slots, dorm_admins, students, rooms, dorms, departments, users CASCADE;
+-- Повне відтворення демонстраційної БД: попередні дані буде видалено.
+BEGIN;
+DROP TABLE IF EXISTS request_status_history, maintenance_requests, event_registrations, events, announcements, account_status_history, residencies, room_chat_messages, room_chats, applications, vacancies, enrollments, courses, parking_slots, dorm_admins, students, rooms, dorms, departments, users CASCADE;
 DROP TYPE  IF EXISTS student_status, user_status, application_status CASCADE;
 
 
@@ -34,6 +36,8 @@ CREATE TABLE rooms (
     dorm_id     INTEGER NOT NULL REFERENCES dorms(dorm_id) ON DELETE RESTRICT,
     room_number VARCHAR(10) NOT NULL CHECK (room_number = trim(room_number) AND room_number <> ''),
     floor       INTEGER,
+    capacity    INTEGER NOT NULL DEFAULT 4 CHECK (capacity > 0),
+    is_available BOOLEAN NOT NULL DEFAULT TRUE,
     UNIQUE (dorm_id, room_number),
     UNIQUE (room_id, dorm_id)
 );
@@ -66,6 +70,83 @@ CREATE TABLE dorm_admins (
     CONSTRAINT fk_dorm_admins_user_dorm
         FOREIGN KEY (user_id, dorm_id) REFERENCES users(user_id, dorm_id)
         ON DELETE RESTRICT
+);
+
+CREATE TABLE residencies (
+    residency_id BIGSERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL REFERENCES students(student_id) ON DELETE RESTRICT,
+    room_id INTEGER NOT NULL REFERENCES rooms(room_id) ON DELETE RESTRICT,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMPTZ,
+    started_by INTEGER REFERENCES users(user_id) ON DELETE RESTRICT,
+    ended_by INTEGER REFERENCES users(user_id) ON DELETE RESTRICT,
+    start_reason TEXT NOT NULL CHECK (length(trim(start_reason)) > 0),
+    end_reason TEXT,
+    CHECK (ended_at IS NULL OR ended_at >= started_at)
+);
+CREATE UNIQUE INDEX one_active_residency ON residencies(student_id) WHERE ended_at IS NULL;
+CREATE INDEX residencies_room_idx ON residencies(room_id, started_at DESC);
+
+CREATE TABLE account_status_history (
+    history_id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(user_id),
+    changed_by INTEGER NOT NULL REFERENCES users(user_id),
+    status user_status NOT NULL,
+    reason TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE announcements (
+    id SERIAL PRIMARY KEY,
+    dorm_id INTEGER NOT NULL REFERENCES dorms(dorm_id),
+    author_id INTEGER NOT NULL REFERENCES users(user_id),
+    title VARCHAR(150) NOT NULL CHECK (length(trim(title)) > 0),
+    body TEXT NOT NULL CHECK (length(trim(body)) > 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX announcements_dorm_idx ON announcements(dorm_id, created_at DESC);
+
+CREATE TABLE events (
+    id SERIAL PRIMARY KEY,
+    dorm_id INTEGER NOT NULL REFERENCES dorms(dorm_id),
+    author_id INTEGER NOT NULL REFERENCES users(user_id),
+    title VARCHAR(150) NOT NULL CHECK (length(trim(title)) > 0),
+    body TEXT NOT NULL CHECK (length(trim(body)) > 0),
+    starts_at TIMESTAMPTZ NOT NULL,
+    place VARCHAR(150) NOT NULL CHECK (length(trim(place)) > 0),
+    capacity INTEGER CHECK (capacity > 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX events_dorm_idx ON events(dorm_id, starts_at);
+CREATE TABLE event_registrations (
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(user_id),
+    registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (event_id, user_id)
+);
+
+CREATE TABLE maintenance_requests (
+    request_id SERIAL PRIMARY KEY,
+    dorm_id INTEGER NOT NULL REFERENCES dorms(dorm_id),
+    room_id INTEGER NOT NULL,
+    author_id INTEGER NOT NULL REFERENCES users(user_id),
+    category TEXT NOT NULL CHECK (category IN ('Сантехніка', 'Електрика', 'Меблі', 'Інтернет', 'Прибирання', 'Інше')),
+    description TEXT NOT NULL CHECK (length(trim(description)) > 0),
+    status TEXT NOT NULL DEFAULT 'Нова' CHECK (status IN ('Нова', 'Прийнята', 'В роботі', 'Виконана', 'Закрита', 'Скасована')),
+    response TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (room_id, dorm_id) REFERENCES rooms(room_id, dorm_id)
+);
+CREATE INDEX requests_dorm_status_idx ON maintenance_requests(dorm_id, status, created_at DESC);
+CREATE INDEX requests_author_idx ON maintenance_requests(author_id);
+CREATE TABLE request_status_history (
+    history_id BIGSERIAL PRIMARY KEY,
+    request_id INTEGER NOT NULL REFERENCES maintenance_requests(request_id) ON DELETE CASCADE,
+    changed_by INTEGER NOT NULL REFERENCES users(user_id),
+    status TEXT NOT NULL CHECK (status IN ('Нова', 'Прийнята', 'В роботі', 'Виконана', 'Закрита', 'Скасована')),
+    response TEXT NOT NULL DEFAULT '',
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE parking_slots (
@@ -194,149 +275,13 @@ INSERT INTO applications (student_id, vacancy_id, application_date, status) VALU
     (2, 2, '2024-03-02', 'accepted'),
     (3, 3, '2024-02-20', 'rejected');
 
+-- Початкова історія відповідає наявним кімнатам студентів.
+INSERT INTO residencies (student_id, room_id, start_reason)
+SELECT student_id, room_id, 'Початкове поселення' FROM students WHERE room_id IS NOT NULL;
 
--- 1 Вибірка даних
-
--- активні користувачі та їхні гуртожитки
-SELECT u.user_id, u.first_name, u.last_name, u.email, d.dorm_number
-FROM users u
-LEFT JOIN dorms d ON d.dorm_id = u.dorm_id
-WHERE u.status = 'active'
-ORDER BY u.user_id;
-
--- студенти які проживають у кімнатах
-SELECT s.student_id, u.first_name, u.last_name, d.dorm_number, r.room_number, s.status
-FROM students s
-JOIN users u ON u.user_id = s.user_id
-JOIN dorms d ON d.dorm_id = u.dorm_id
-JOIN rooms r ON r.room_id = s.room_id
-ORDER BY d.dorm_number, r.room_number;
-
--- вільні паркомісця
-SELECT d.dorm_number, p.slot_number
-FROM parking_slots p
-JOIN dorms d ON d.dorm_id = p.dorm_id
-WHERE p.user_id IS NULL
-ORDER BY d.dorm_number, p.slot_number;
-
--- 2 Додавання даних
-
--- нова вакансія 
-INSERT INTO vacancies (company_name, job_name)
-VALUES ('SoftServe', 'Trainee Database Developer');
-
-SELECT * FROM vacancies;
-
--- заява студента на вакансію
-INSERT INTO applications (student_id, vacancy_id, application_date, status)
-VALUES (
-    (SELECT student_id FROM students WHERE user_id = 8),
-    (SELECT vacancy_id FROM vacancies
-     WHERE company_name = 'SoftServe' AND job_name = 'Trainee Database Developer'),
-    CURRENT_DATE,
-    'submitted'
-);
-
--- перевірка
-SELECT u.first_name, u.last_name, v.company_name, v.job_name, a.status
-FROM applications a
-JOIN students s ON s.student_id = a.student_id
-JOIN users u ON u.user_id = s.user_id
-JOIN vacancies v ON v.vacancy_id = a.vacancy_id
-WHERE v.company_name = 'SoftServe';
-
--- запис нового користувача
-INSERT INTO users (first_name, last_name, email, date_of_birth, status, dorm_id)
-VALUES ('Ірина', 'Левченко', 'iryna.levchenko@example.com', '2003-04-12', 'active', 4);
-
--- перевірка
-SELECT user_id, first_name, last_name, email
-FROM users
-WHERE email = 'iryna.levchenko@example.com';
-
--- 3 Зміна даних
-
--- статус до зміни
-SELECT a.application_id, v.company_name, v.job_name, a.status
-FROM applications a
-JOIN students s ON s.student_id = a.student_id
-JOIN users u ON u.user_id = s.user_id
-JOIN vacancies v ON v.vacancy_id = a.vacancy_id
-WHERE u.email = 'ivan.petrenko@example.com'
-  AND v.company_name = 'EPAM';
-
--- переведення заяви у статус accepted
-UPDATE applications
-SET status = 'accepted'
-WHERE student_id = (SELECT student_id FROM students WHERE user_id = 1)
-  AND vacancy_id = (SELECT vacancy_id FROM vacancies WHERE company_name = 'EPAM');
-
--- перевірка
-SELECT a.application_id, v.company_name, v.job_name, a.status
-FROM applications a
-JOIN vacancies v ON v.vacancy_id = a.vacancy_id
-WHERE a.student_id = (SELECT student_id FROM students WHERE user_id = 1)
-  AND v.company_name = 'EPAM';
-
--- статус до зміни
-SELECT * FROM users WHERE user_id = 8;
-
--- призначення гуртожитку студенту
-UPDATE users
-SET dorm_id = 3
-WHERE user_id = 8;
-
-SELECT * FROM users WHERE user_id = 8;
-
--- статус до зміни
-SELECT * FROM students WHERE user_id = 8;
-
--- призначення кімнати студенту
-UPDATE students
-SET room_id = 5
-WHERE user_id = 8;
-
--- перевірка
-SELECT u.first_name, u.last_name, d.dorm_number, r.room_number
-FROM students s
-JOIN users u ON u.user_id = s.user_id
-JOIN dorms d ON d.dorm_id = u.dorm_id
-JOIN rooms r ON r.room_id = s.room_id
-WHERE s.user_id = 8;
-
--- 4 Видалення даних
-
-SELECT * FROM applications;
-SELECT vacancy_id, company_name, job_name
-FROM vacancies
-ORDER BY vacancy_id;
-
--- видалення вакансій у Rozetka
-DELETE FROM vacancies
-WHERE company_name = 'Rozetka';
-
--- перевірка
-SELECT vacancy_id, company_name, job_name
-FROM vacancies
-ORDER BY vacancy_id;
-
--- видалення користувача, який не пов'язаний з іншими записами
-DELETE FROM users
-WHERE email = 'iryna.levchenko@example.com';
-
--- перевірка
-SELECT user_id, first_name, last_name, email
-FROM users
-WHERE email = 'iryna.levchenko@example.com';
-
--- видалення вільного паркомісця
-DELETE FROM parking_slots
-WHERE slot_number = 'P-401'
-  AND user_id IS NULL;
-
--- перевірка
-SELECT parking_slot_id, dorm_id, slot_number, user_id
-FROM parking_slots
-WHERE slot_number = 'P-401';
-
-SELECT * FROM parking_slots WHERE slot_number LIKE 'P-1%';
+INSERT INTO announcements (dorm_id, author_id, title, body) VALUES
+(1, 5, 'Вітаємо у DormHub', 'Тут публікуються оголошення адміністрації вашого гуртожитку.');
+INSERT INTO events (dorm_id, author_id, title, body, starts_at, place, capacity) VALUES
+(1, 5, 'Зустріч мешканців', 'Обговорення питань проживання та пропозицій мешканців.',
+ CURRENT_TIMESTAMP + INTERVAL '7 days', 'Хол першого поверху', 30);
+COMMIT;
