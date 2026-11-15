@@ -6,11 +6,31 @@ from ui.forms import DataPage, Form, button, label
 from ui.module_c.requests_page import RequestsPage
 
 
+class DormPage(DataPage):
+    def __init__(self, master, user):
+        super().__init__(master, user)
+        self.render()
+
+    def render(self):
+        self.clear('Гуртожиток')
+        dorm = repo.get_admin_dorm()
+        card = theme.card(self)
+        label(card, f"Гуртожиток №{dorm['dorm_number']}", bold=True)
+        label(card, dorm['address'])
+        button(card, 'Редагувати', lambda: self.edit(dorm))
+
+    def edit(self, dorm):
+        def save(values):
+            repo.save_dorm(**values)
+        Form(self, 'Гуртожиток', [
+            ('dorm_number', 'Номер гуртожитку', dorm['dorm_number'], None),
+            ('address', 'Адреса', dorm['address'], None)], save, self.render)
+
+
 class ResidentsPage(DataPage):
     def __init__(self, master, user):
         super().__init__(master, user)
         self.search = ''
-        self.status_filter = 'Усі'
         self.room_filter = 'Усі кімнати'
         self.render()
 
@@ -23,29 +43,23 @@ class ResidentsPage(DataPage):
         self.search_entry.insert(0, self.search)
         self.search_entry.pack(fill='x', padx=16, pady=8)
         self.search_entry.bind('<Return>', lambda event: self.apply_filters())
-        self.status_menu = ctk.CTkOptionMenu(filters, values=['Усі'] + repo.get_user_statuses())
-        self.status_menu.set(self.status_filter)
-        self.status_menu.pack(side='left', padx=16, pady=8)
         self.room_menu = ctk.CTkOptionMenu(filters, values=list(self.room_choices))
         self.room_menu.set(self.room_filter if self.room_filter in self.room_choices else 'Усі кімнати')
-        self.room_menu.pack(side='left', padx=8, pady=8)
+        self.room_menu.pack(side='left', padx=16, pady=8)
         button(filters, 'Знайти', self.apply_filters)
         button(self, 'Додати мешканця', lambda: self.edit())
-        rows = repo.get_admin_residents(self.search, self.status_filter, self.room_choices.get(self.room_filter))
+        rows = repo.get_admin_residents(self.search, self.room_choices.get(self.room_filter))
         if not rows:
             self.empty()
         for row in rows:
             card = theme.card(self)
             label(card, repo.get_user_name(row), bold=True)
-            label(card, f"{row['email']} · {row['status']} · Кімната: {row['room_number'] or 'не поселено'}")
+            label(card, f"{row['email']} · Кімната: {row['room_number'] or 'не поселено'}")
             label(card, f"Дата народження: {row['date_of_birth'] or 'не вказано'} · Рік вступу: {row['enrollment_year'] or 'не вказано'}")
             button(card, 'Редагувати', lambda r=row: self.edit(r))
-            button(card, 'Розблокувати' if row['status'] == 'blocked' else 'Заблокувати',
-                   lambda r=row: self.change_status(r))
 
     def apply_filters(self):
         self.search = self.search_entry.get()
-        self.status_filter = self.status_menu.get()
         self.room_filter = self.room_menu.get()
         self.run(lambda: None)
 
@@ -60,14 +74,6 @@ class ResidentsPage(DataPage):
             values['birth_date'] = values.pop('date_of_birth')
             repo.save_resident(user_id=row.get('user_id'), **values)
         Form(self, 'Мешканець', fields, save, self.render)
-
-    def change_status(self, row):
-        status = 'active' if row['status'] == 'blocked' else 'blocked'
-
-        def save(values):
-            repo.set_resident_status(row['user_id'], status, values['reason'])
-        Form(self, 'Зміна статусу акаунта', [('reason', 'Причина', '', 'text')], save, self.render)
-
 
 class RoomsPage(DataPage):
     def __init__(self, master, user):
@@ -86,7 +92,17 @@ class RoomsPage(DataPage):
             label(card, f"Зайнято: {row['occupied']}/{row['capacity']} · "
                   f"Вільно: {row['capacity'] - row['occupied']} · "
                   + ('Відкрита для поселення' if row['is_available'] else 'Закрита для поселення'))
+            for place in row['places']:
+                state = 'зайняте' if place['occupied'] else (
+                    'доступне' if place['is_available'] else 'закрите')
+                label(card, f"Місце {place['place_number']}: {state}")
+                if not place['occupied']:
+                    button(card, 'Закрити' if place['is_available'] else 'Відкрити',
+                           lambda p=place: self.toggle_place(p))
             button(card, 'Редагувати', lambda r=row: self.edit(r))
+
+    def toggle_place(self, place):
+        self.run(lambda: repo.save_place(place['place_id'], not place['is_available']))
 
     def edit(self, row=None):
         row = row or {}
@@ -115,7 +131,10 @@ class ResidenciesPage(DataPage):
             self.empty('Спочатку додайте мешканця у вкладці «Мешканці».')
         for row in rows:
             card = theme.card(self)
-            label(card, f"{repo.get_user_name(row)} · Кімната: {row['room_number'] or 'не поселено'}", bold=True)
+            location = 'не поселено'
+            if row['room_id']:
+                location = f"кімната {row['room_number']}, місце {row['place_number']}"
+            label(card, f"{repo.get_user_name(row)} · {location}", bold=True)
             button(card, 'Переселити' if row['room_id'] else 'Поселити', lambda r=row: self.move(r))
             if row['room_id']:
                 button(card, 'Виселити', lambda r=row: self.move(r, checkout=True))
@@ -123,15 +142,19 @@ class ResidenciesPage(DataPage):
         for row in repo.get_residency_history():
             card = theme.card(self)
             end = row['ended_at'].strftime('%d.%m.%Y %H:%M') if row['ended_at'] else 'проживає'
-            label(card, f"{row['resident_name']} · Кімната {row['room_number']}", bold=True)
+            label(card, f"{row['resident_name']} · Кімната {row['room_number']}, місце {row['place_number']}", bold=True)
             label(card, f"{row['started_at']:%d.%m.%Y %H:%M} → {end}\nПричина поселення: {row['start_reason']}")
             if row['end_reason']:
                 label(card, 'Причина завершення: ' + row['end_reason'])
 
     def move(self, row, checkout=False):
-        choices = {f"{r['room_number']} (вільно {r['capacity'] - r['occupied']})": r['room_id']
-                   for r in self.rooms if r['is_available'] and r['occupied'] < r['capacity']
-                   and r['room_id'] != row['room_id']}
+        choices = {}
+        for room in self.rooms:
+            if not room['is_available']:
+                continue
+            for place in room['places']:
+                if place['is_available'] and not place['occupied']:
+                    choices[f"кімната {room['room_number']}, місце {place['place_number']}"] = place['place_id']
         if not checkout and not choices:
             self.empty('Вільних відкритих кімнат немає. Додайте кімнату або змініть її місткість.')
             return
@@ -139,7 +162,10 @@ class ResidenciesPage(DataPage):
         fields.append(('reason', 'Причина', '', 'text'))
 
         def save(values):
-            repo.change_residency(row['user_id'], None if checkout else choices[values['room']], values['reason'])
+            repo.change_residency(row['user_id'], None if checkout else choices[values['place']], values['reason'])
+
+        if not checkout:
+            fields = [('place', 'Місце', '', list(choices)), ('reason', 'Причина', '', 'text')]
         Form(self, 'Виселення' if checkout else 'Поселення / переселення', fields, save, self.render)
 
 
@@ -151,7 +177,7 @@ class AdminPage(ctk.CTkFrame):
         theme.page_title(self, 'Адміністративний кабінет')
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill='both', expand=True, padx=12, pady=(0, 12))
-        for name, cls in [('Мешканці', ResidentsPage), ('Кімнати', RoomsPage),
+        for name, cls in [('Гуртожиток', DormPage), ('Мешканці', ResidentsPage), ('Кімнати', RoomsPage),
                           ('Поселення', ResidenciesPage), ('Звернення', RequestsPage)]:
             tab = tabs.add(name)
             if cls is RequestsPage:
@@ -168,7 +194,7 @@ class AdminPage(ctk.CTkFrame):
         tab = tabs.tab(name)
         for child in tab.winfo_children():
             child.destroy()
-        cls = {'Мешканці': ResidentsPage, 'Кімнати': RoomsPage,
+        cls = {'Гуртожиток': DormPage, 'Мешканці': ResidentsPage, 'Кімнати': RoomsPage,
                'Поселення': ResidenciesPage, 'Звернення': RequestsPage}[name]
         try:
             page = cls(tab, user, admin=True) if cls is RequestsPage else cls(tab, user)

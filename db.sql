@@ -1,6 +1,6 @@
 -- Створення порожньої БД без демонстраційних записів: попередні дані буде видалено.
 BEGIN;
-DROP TABLE IF EXISTS request_status_history, maintenance_requests, request_categories, request_statuses, event_registrations, events, announcements, account_status_history, residencies, room_chat_messages, room_chats, applications, vacancies, enrollments, courses, parking_slots, dorm_admins, students, rooms, dorms, departments, users CASCADE;
+DROP TABLE IF EXISTS request_status_history, maintenance_requests, request_categories, request_statuses, event_registrations, events, announcements, account_status_history, residencies, room_chat_messages, room_chats, applications, vacancies, enrollments, courses, parking_slots, dorm_admins, students, room_places, rooms, dorms, departments, users CASCADE;
 DROP TYPE  IF EXISTS student_status, user_status, application_status CASCADE;
 
 
@@ -42,12 +42,24 @@ CREATE TABLE rooms (
     UNIQUE (room_id, dorm_id)
 );
 
+CREATE TABLE room_places (
+    place_id     SERIAL PRIMARY KEY,
+    room_id      INTEGER NOT NULL REFERENCES rooms(room_id) ON DELETE RESTRICT,
+    place_number INTEGER NOT NULL CHECK (place_number > 0),
+    is_available BOOLEAN NOT NULL DEFAULT TRUE,
+    UNIQUE (room_id, place_number),
+    UNIQUE (place_id, room_id)
+);
+
 CREATE TABLE students (
     student_id      SERIAL PRIMARY KEY,
     enrollment_year INTEGER,
     room_id         INTEGER REFERENCES rooms(room_id) ON DELETE RESTRICT,
+    place_id        INTEGER UNIQUE,
     status          student_status NOT NULL DEFAULT 'enrolled',
-    user_id         INTEGER NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE RESTRICT
+    user_id         INTEGER NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE RESTRICT,
+    CONSTRAINT students_place_room_fkey
+        FOREIGN KEY (place_id, room_id) REFERENCES room_places(place_id, room_id)
 );
 
 CREATE TABLE room_chats (
@@ -76,15 +88,19 @@ CREATE TABLE residencies (
     residency_id BIGSERIAL PRIMARY KEY,
     student_id INTEGER NOT NULL REFERENCES students(student_id) ON DELETE RESTRICT,
     room_id INTEGER NOT NULL REFERENCES rooms(room_id) ON DELETE RESTRICT,
+    place_id INTEGER NOT NULL,
     started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ended_at TIMESTAMPTZ,
     started_by INTEGER REFERENCES users(user_id) ON DELETE RESTRICT,
     ended_by INTEGER REFERENCES users(user_id) ON DELETE RESTRICT,
     start_reason TEXT NOT NULL CHECK (length(trim(start_reason)) > 0),
     end_reason TEXT,
+    CONSTRAINT residencies_place_room_fkey
+        FOREIGN KEY (place_id, room_id) REFERENCES room_places(place_id, room_id),
     CHECK (ended_at IS NULL OR ended_at >= started_at)
 );
 CREATE UNIQUE INDEX one_active_residency ON residencies(student_id) WHERE ended_at IS NULL;
+CREATE UNIQUE INDEX one_current_student_per_place ON students(place_id) WHERE place_id IS NOT NULL;
 CREATE INDEX residencies_room_idx ON residencies(room_id, started_at DESC);
 
 CREATE TABLE account_status_history (

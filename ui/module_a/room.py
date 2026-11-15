@@ -25,7 +25,8 @@ class RoomPage(ctk.CTkScrollableFrame):
 
         stats = ctk.CTkFrame(info, fg_color="transparent")
         stats.pack(fill="x", padx=20, pady=16)
-        for title, value in [("Поверх", room["floor"]), ("Мешканців", len(roommates))]:
+        for title, value in [("Поверх", room["floor"]), ("Місце", student["place_number"] or "—"),
+                             ("Мешканців", len(roommates))]:
             box = ctk.CTkFrame(stats, corner_radius=10)
             box.pack(side="left", padx=(0, 12), ipadx=16, ipady=8)
             ctk.CTkLabel(box, text=str(value), font=theme.font(20, bold=True)).pack()
