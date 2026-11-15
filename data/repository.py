@@ -25,11 +25,11 @@ def _transaction():
 def _actor(cursor, admin=False):
     if current_user is None:
         raise PermissionError("Увійдіть до акаунта")
-    cursor.execute("SELECT * FROM users WHERE user_id = %s AND status = 'active' FOR SHARE",
+    cursor.execute("SELECT * FROM users WHERE user_id = %s FOR SHARE",
                    (current_user["user_id"],))
     user = cursor.fetchone()
     if not user:
-        raise PermissionError("Акаунт заблоковано або видалено. Увійдіть знову.")
+        raise PermissionError("Акаунт видалено. Увійдіть знову.")
     if admin:
         cursor.execute("SELECT dorm_id FROM dorm_admins WHERE user_id = %s", (user["user_id"],))
         assignment = cursor.fetchone()
@@ -117,9 +117,11 @@ def get_student_for_user(user_id):
         with connection.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(
                 """
-                SELECT student_id, enrollment_year, room_id, status, user_id
-                FROM students
-                WHERE user_id = %s
+                SELECT s.student_id, s.enrollment_year, s.room_id, s.place_id,
+                       p.place_number, s.status, s.user_id
+                FROM students s
+                LEFT JOIN room_places p ON p.place_id = s.place_id
+                WHERE s.user_id = %s
                 """,
                 (user_id,),
             )
@@ -301,8 +303,6 @@ def login(first_name, last_name):
         raise ValueError("Користувача з таким ім’ям та прізвищем не знайдено")
     if len(users) > 1:
         raise ValueError("Знайдено кілька акаунтів із цим ім’ям та прізвищем. Зверніться до адміністратора.")
-    if users[0]["status"] != "active":
-        raise ValueError("Цей акаунт заблоковано")
     current_user = users[0]
     return current_user
 
@@ -321,11 +321,6 @@ def get_request_categories():
 def get_request_statuses():
     return [row['name'] for row in _fetch_all(
         'SELECT name FROM request_statuses ORDER BY sort_order, name')]
-
-
-def get_user_statuses():
-    return [row['status'] for row in _fetch_all(
-        'SELECT unnest(enum_range(NULL::user_status))::text AS status')]
 
 
 def setup_first_admin(dorm_number, address, first_name, last_name, email):
@@ -359,20 +354,21 @@ def setup_first_admin(dorm_number, address, first_name, last_name, email):
         return user_id
 
 
-def get_admin_residents(search="", status="Усі", room_id=None):
+def get_admin_residents(search="", room_id=None):
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
         cursor.execute("""
             SELECT u.*, s.student_id, s.room_id, s.enrollment_year,
-                   s.status AS student_status, r.room_number
+                   s.place_id, s.status AS student_status, r.room_number,
+                   p.place_number
             FROM users u JOIN students s ON s.user_id = u.user_id
             LEFT JOIN rooms r ON r.room_id = s.room_id
+            LEFT JOIN room_places p ON p.place_id = s.place_id
             WHERE u.dorm_id = %s
               AND (u.first_name || ' ' || u.last_name || ' ' || u.email) ILIKE %s
-              AND (%s = 'Усі' OR u.status::text = %s)
               AND (%s IS NULL OR s.room_id = %s)
             ORDER BY u.last_name, u.first_name, u.user_id
-        """, (actor['dorm_id'], '%' + search.strip() + '%', status, status, room_id, room_id))
+        """, (actor['dorm_id'], '%' + search.strip() + '%', room_id, room_id))
         return cursor.fetchall()
 
 
@@ -408,29 +404,51 @@ def save_resident(first_name, last_name, email, birth_date="", enrollment_year="
         return user_id
 
 
-def set_resident_status(user_id, status, reason):
-    reason = _required(reason, "Причина", 1000)
-    if status not in get_user_statuses():
-        raise ValueError("Невідомий статус")
-    with _transaction() as cursor:
-        actor = _actor(cursor, admin=True)
-        cursor.execute("""UPDATE users SET status=%s WHERE user_id=%s AND dorm_id=%s
-            AND EXISTS (SELECT 1 FROM students WHERE user_id=users.user_id)
-            AND NOT EXISTS (SELECT 1 FROM dorm_admins WHERE user_id=users.user_id)""",
-                       (status, user_id, actor['dorm_id']))
-        if not cursor.rowcount:
-            raise PermissionError("Мешканця не знайдено або він має права адміністратора")
-        cursor.execute("""INSERT INTO account_status_history (user_id, changed_by, status, reason)
-            VALUES (%s, %s, %s, %s)""", (user_id, actor['user_id'], status, reason))
-
-
 def get_admin_rooms():
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
-        cursor.execute("""SELECT r.*, count(s.student_id)::int AS occupied
-            FROM rooms r LEFT JOIN students s ON s.room_id=r.room_id
-            WHERE r.dorm_id=%s GROUP BY r.room_id ORDER BY r.floor, r.room_number""", (actor['dorm_id'],))
+        cursor.execute("""SELECT r.*,
+                count(s.student_id)::int AS occupied,
+                COALESCE(json_agg(json_build_object(
+                    'place_id', p.place_id,
+                    'place_number', p.place_number,
+                    'is_available', p.is_available,
+                    'occupied', s.student_id IS NOT NULL
+                ) ORDER BY p.place_number) FILTER (WHERE p.place_id IS NOT NULL), '[]') AS places
+            FROM rooms r
+            LEFT JOIN room_places p ON p.room_id = r.room_id
+            LEFT JOIN students s ON s.place_id = p.place_id
+            WHERE r.dorm_id=%s
+            GROUP BY r.room_id
+            ORDER BY r.floor, r.room_number""", (actor['dorm_id'],))
         return cursor.fetchall()
+
+
+def get_admin_dorm():
+    with _transaction() as cursor:
+        actor = _actor(cursor, admin=True)
+        cursor.execute("SELECT dorm_id, dorm_number, address FROM dorms WHERE dorm_id=%s",
+                       (actor['dorm_id'],))
+        dorm = cursor.fetchone()
+        if not dorm:
+            raise RuntimeError("Гуртожиток адміністратора не знайдено")
+        return dorm
+
+
+def save_dorm(dorm_number, address):
+    address = _required(address, "Адреса", 150)
+    try:
+        dorm_number = int(dorm_number)
+    except ValueError:
+        raise ValueError("Номер гуртожитку має бути цілим числом") from None
+    if dorm_number < 1:
+        raise ValueError("Номер гуртожитку має бути більшим за нуль")
+    with _transaction() as cursor:
+        actor = _actor(cursor, admin=True)
+        cursor.execute("""UPDATE dorms SET dorm_number=%s, address=%s
+            WHERE dorm_id=%s""", (dorm_number, address, actor['dorm_id']))
+        if not cursor.rowcount:
+            raise RuntimeError("Гуртожиток адміністратора не знайдено")
 
 
 def save_room(room_number, floor, capacity, is_available=True, room_id=None):
@@ -448,6 +466,9 @@ def save_room(room_number, floor, capacity, is_available=True, room_id=None):
                 VALUES (%s, %s, %s, %s, %s) RETURNING room_id""",
                            (actor['dorm_id'], number, floor, capacity, is_available))
             room_id = cursor.fetchone()['room_id']
+            cursor.execute("""INSERT INTO room_places (room_id, place_number)
+                SELECT %s, place_number FROM generate_series(1, %s) AS places(place_number)""",
+                           (room_id, capacity))
         else:
             cursor.execute("SELECT room_id FROM rooms WHERE room_id=%s AND dorm_id=%s FOR UPDATE",
                            (room_id, actor['dorm_id']))
@@ -456,12 +477,48 @@ def save_room(room_number, floor, capacity, is_available=True, room_id=None):
             cursor.execute("SELECT count(*) AS n FROM students WHERE room_id=%s", (room_id,))
             if cursor.fetchone()['n'] > capacity:
                 raise ValueError("Місткість менша за поточну кількість мешканців")
+            cursor.execute("""SELECT 1
+                FROM room_places p
+                WHERE p.room_id=%s AND p.place_number > %s
+                  AND (p.is_available = FALSE OR EXISTS (
+                      SELECT 1 FROM students s WHERE s.place_id = p.place_id
+                  ) OR EXISTS (
+                      SELECT 1 FROM residencies h WHERE h.place_id = p.place_id
+                  ))
+                LIMIT 1""", (room_id, capacity))
+            if cursor.fetchone():
+                raise ValueError("Не можна зменшити місткість: місця вже використовуються або закриті")
+            cursor.execute("DELETE FROM room_places WHERE room_id=%s AND place_number > %s",
+                           (room_id, capacity))
+            cursor.execute("""INSERT INTO room_places (room_id, place_number)
+                SELECT %s, places.place_number
+                FROM generate_series(1, %s) AS places(place_number)
+                ON CONFLICT (room_id, place_number) DO NOTHING""",
+                           (room_id, capacity))
             cursor.execute("""UPDATE rooms SET room_number=%s, floor=%s, capacity=%s, is_available=%s
                 WHERE room_id=%s""", (number, floor, capacity, is_available, room_id))
         cursor.execute("INSERT INTO room_chats (room_id) VALUES (%s) ON CONFLICT (room_id) DO NOTHING", (room_id,))
 
 
-def change_residency(user_id, room_id, reason):
+def save_place(place_id, is_available):
+    with _transaction() as cursor:
+        actor = _actor(cursor, admin=True)
+        cursor.execute("""SELECT p.place_id, p.is_available, s.student_id
+            FROM room_places p
+            JOIN rooms r ON r.room_id=p.room_id
+            LEFT JOIN students s ON s.place_id=p.place_id
+            WHERE p.place_id=%s AND r.dorm_id=%s
+            FOR UPDATE OF p""", (place_id, actor['dorm_id']))
+        place = cursor.fetchone()
+        if not place:
+            raise PermissionError("Місце вашого гуртожитку не знайдено")
+        if place['student_id'] is not None and not is_available:
+            raise ValueError("Зайняте місце не можна закрити")
+        cursor.execute("UPDATE room_places SET is_available=%s WHERE place_id=%s",
+                       (is_available, place_id))
+
+
+def change_residency(user_id, place_id, reason):
     reason = _required(reason, "Причина", 1000)
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
@@ -470,38 +527,47 @@ def change_residency(user_id, room_id, reason):
         student = cursor.fetchone()
         if not student:
             raise PermissionError("Мешканця вашого гуртожитку не знайдено")
-        if student['room_id'] == room_id:
-            raise ValueError("Мешканець уже в цій кімнаті" if room_id else "Мешканця ще не поселено")
-        # Однаковий порядок блокування кімнат запобігає взаємному блокуванню переселень.
-        cursor.execute("SELECT * FROM rooms WHERE room_id IN (%s, %s) ORDER BY room_id FOR UPDATE",
-                       (student['room_id'], room_id))
-        rooms = {r['room_id']: r for r in cursor.fetchall()}
-        if room_id is not None:
-            room = rooms.get(room_id)
-            if not room or room['dorm_id'] != actor['dorm_id']:
-                raise PermissionError("Оберіть кімнату вашого гуртожитку")
-            if not room['is_available']:
+        if student['place_id'] == place_id:
+            raise ValueError("Мешканець уже на цьому місці" if place_id else "Мешканця ще не поселено")
+        place_ids = [value for value in (student['place_id'], place_id) if value is not None]
+        if place_ids:
+            cursor.execute("""SELECT p.*, r.dorm_id, r.is_available AS room_is_available
+                FROM room_places p JOIN rooms r ON r.room_id=p.room_id
+                WHERE p.place_id = ANY(%s)
+                ORDER BY p.place_id
+                FOR UPDATE OF p""", (place_ids,))
+            places = {row['place_id']: row for row in cursor.fetchall()}
+        else:
+            places = {}
+        if place_id is not None:
+            place = places.get(place_id)
+            if not place or place['dorm_id'] != actor['dorm_id']:
+                raise PermissionError("Оберіть місце вашого гуртожитку")
+            if not place['is_available']:
+                raise ValueError("Місце закрите для поселення")
+            if not place['room_is_available']:
                 raise ValueError("Кімната закрита для поселення")
-            cursor.execute("SELECT status FROM users WHERE user_id=%s", (user_id,))
-            if cursor.fetchone()['status'] != 'active':
-                raise ValueError("Заблокованого мешканця не можна поселити")
-            cursor.execute("SELECT count(*) AS n FROM students WHERE room_id=%s", (room_id,))
-            if cursor.fetchone()['n'] >= room['capacity']:
-                raise ValueError("У кімнаті немає вільних місць")
+            cursor.execute("SELECT 1 FROM students WHERE place_id=%s FOR UPDATE", (place_id,))
+            if cursor.fetchone():
+                raise ValueError("Місце вже зайняте іншим мешканцем")
         cursor.execute("""UPDATE residencies SET ended_at=CURRENT_TIMESTAMP, ended_by=%s, end_reason=%s
             WHERE student_id=%s AND ended_at IS NULL""", (actor['user_id'], reason, student['student_id']))
-        if room_id is not None:
-            cursor.execute("""INSERT INTO residencies (student_id, room_id, started_by, start_reason)
-                VALUES (%s, %s, %s, %s)""", (student['student_id'], room_id, actor['user_id'], reason))
-        cursor.execute("UPDATE students SET room_id=%s WHERE student_id=%s", (room_id, student['student_id']))
+        if place_id is not None:
+            cursor.execute("""INSERT INTO residencies (student_id, room_id, place_id, started_by, start_reason)
+                VALUES (%s, %s, %s, %s, %s)""",
+                           (student['student_id'], place['room_id'], place_id, actor['user_id'], reason))
+        cursor.execute("UPDATE students SET room_id=%s, place_id=%s WHERE student_id=%s",
+                       (place['room_id'] if place_id is not None else None, place_id, student['student_id']))
 
 
 def get_residency_history():
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
-        cursor.execute("""SELECT h.*, u.first_name || ' ' || u.last_name AS resident_name, r.room_number
+        cursor.execute("""SELECT h.*, u.first_name || ' ' || u.last_name AS resident_name,
+                r.room_number, p.place_number
             FROM residencies h JOIN students s ON s.student_id=h.student_id
             JOIN users u ON u.user_id=s.user_id JOIN rooms r ON r.room_id=h.room_id
+            JOIN room_places p ON p.place_id=h.place_id
             WHERE r.dorm_id=%s ORDER BY h.started_at DESC, h.residency_id DESC""", (actor['dorm_id'],))
         return cursor.fetchall()
 
