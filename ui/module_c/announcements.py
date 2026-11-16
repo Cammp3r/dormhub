@@ -1,6 +1,4 @@
 from tkinter import messagebox
-from zoneinfo import ZoneInfo
-
 from data import repository as repo
 from ui import theme
 from ui.forms import DataPage, Form, button, label
@@ -26,7 +24,7 @@ class AnnouncementsPage(DataPage):
             card = theme.card(self)
             label(card, row['title'], bold=True)
             label(card, row['body'])
-            label(card, f"{row['author_name']} · {row['created_at'].astimezone(ZoneInfo('Europe/Kyiv')):%d.%m.%Y %H:%M}")
+            label(card, f"{row['author_name']} · {row['created_at']:%d.%m.%Y %H:%M}")
             self.details(card, row)
             if admin:
                 button(card, 'Редагувати', lambda r=row: self.edit(r))
@@ -39,13 +37,6 @@ class AnnouncementsPage(DataPage):
         row = row or {}
         fields = [('title', 'Заголовок', row.get('title', ''), None),
                   ('body', 'Опис', row.get('body', ''), 'text')]
-        if self.kind == 'events':
-            starts = row.get('starts_at')
-            starts = starts.astimezone(ZoneInfo('Europe/Kyiv')).strftime('%Y-%m-%d %H:%M') if starts else ''
-            fields += [('starts_at', 'Дата й час у Києві (РРРР-ММ-ДД ГГ:ХХ)', starts, None),
-                       ('place', 'Місце проведення', row.get('place', ''), None),
-                       ('capacity', 'Кількість місць (порожньо — без обмежень)', row.get('capacity', ''), None)]
-
         def save(values):
             repo.save_publication(self.kind, publication_id=row.get('id'), **values)
         Form(self, 'Публікація', fields, save, self.render)

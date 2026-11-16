@@ -1,7 +1,6 @@
 from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from db import get_db_connection
 
@@ -209,33 +208,6 @@ def is_dorm_admin(user_id):
             return cursor.fetchone() is not None
     finally:
         connection.close()
-
-
-def get_departments():
-    return _fetch_all(
-        """
-        SELECT department_id, department_name
-        FROM departments
-        ORDER BY department_name
-        """
-    )
-
-
-def get_enrollments(student_id=None):
-    query = """
-        SELECT e.enrollment_id, e.student_id, e.course_id,
-               e.enrollment_date, e.grade,
-               c.course_title, c.department_id, d.department_name
-        FROM enrollments AS e
-        INNER JOIN courses AS c ON c.course_id = e.course_id
-        INNER JOIN departments AS d ON d.department_id = c.department_id
-    """
-    parameters = ()
-    if student_id is not None:
-        query += " WHERE e.student_id = %s"
-        parameters = (student_id,)
-    query += " ORDER BY e.enrollment_date DESC, e.enrollment_id"
-    return _fetch_all(query, parameters)
 
 
 def get_vacancies():
@@ -579,54 +551,31 @@ def get_publications(kind):
         cursor.execute(f"""SELECT p.*, u.first_name || ' ' || u.last_name AS author_name
             FROM {table} p JOIN users u ON u.user_id=p.author_id
             WHERE p.dorm_id=%s ORDER BY p.created_at DESC, p.id DESC""", (actor['dorm_id'],))
-        rows = cursor.fetchall()
-        if kind == 'events':
-            for row in rows:
-                cursor.execute("SELECT user_id FROM event_registrations WHERE event_id=%s", (row['id'],))
-                row['participant_ids'] = [p['user_id'] for p in cursor.fetchall()]
-        return rows
+        return cursor.fetchall()
 
 
 def _publication_table(kind):
-    if kind not in ('announcements', 'events'):
+    if kind != 'announcements':
         raise ValueError("Невідомий тип публікації")
     return kind
 
 
-def save_publication(kind, title, body, publication_id=None, starts_at="", place="", capacity=""):
+def save_publication(kind, title, body, publication_id=None):
     table = _publication_table(kind)
     title, body = _required(title, "Заголовок", 150), _required(body, "Опис", 10000)
-    extra = ()
-    if kind == 'events':
-        place = _required(place, "Місце", 150)
-        try:
-            # Усі введені дати подій — місцевий час Києва, незалежно від часового поясу БД.
-            starts = datetime.strptime(starts_at.strip(), "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo("Europe/Kyiv"))
-            limit = int(capacity) if str(capacity).strip() else None
-        except ValueError:
-            raise ValueError("Дата події: РРРР-ММ-ДД ГГ:ХХ; кількість місць: ціле число") from None
-        if limit is not None and limit < 1:
-            raise ValueError("Кількість місць має бути більшою за нуль")
-        extra = (starts, place, limit)
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
         if publication_id is None:
-            columns = ", starts_at, place, capacity" if extra else ""
-            placeholders = ", %s, %s, %s" if extra else ""
-            cursor.execute(f"""INSERT INTO {table} (dorm_id, author_id, title, body{columns})
-                VALUES (%s, %s, %s, %s{placeholders})""", (actor['dorm_id'], actor['user_id'], title, body) + extra)
+            cursor.execute(f"""INSERT INTO {table} (dorm_id, author_id, title, body)
+                VALUES (%s, %s, %s, %s)""",
+                           (actor['dorm_id'], actor['user_id'], title, body))
         else:
             cursor.execute(f"SELECT id FROM {table} WHERE id=%s AND dorm_id=%s FOR UPDATE",
                            (publication_id, actor['dorm_id']))
             if not cursor.fetchone():
                 raise PermissionError("Публікацію вашого гуртожитку не знайдено")
-            if extra and extra[2] is not None:
-                cursor.execute("SELECT count(*) AS n FROM event_registrations WHERE event_id=%s", (publication_id,))
-                if cursor.fetchone()['n'] > extra[2]:
-                    raise ValueError("Місць менше за кількість зареєстрованих учасників")
-            assignments = ", starts_at=%s, place=%s, capacity=%s" if extra else ""
-            cursor.execute(f"UPDATE {table} SET title=%s, body=%s{assignments} WHERE id=%s",
-                           (title, body) + extra + (publication_id,))
+            cursor.execute(f"UPDATE {table} SET title=%s, body=%s WHERE id=%s",
+                           (title, body, publication_id))
 
 
 def delete_publication(kind, publication_id):
@@ -636,25 +585,6 @@ def delete_publication(kind, publication_id):
         cursor.execute(f"DELETE FROM {table} WHERE id=%s AND dorm_id=%s", (publication_id, actor['dorm_id']))
         if not cursor.rowcount:
             raise PermissionError("Публікацію вашого гуртожитку не знайдено")
-
-
-def toggle_participation(event_id):
-    with _transaction() as cursor:
-        actor = _actor(cursor)
-        cursor.execute("SELECT * FROM events WHERE id=%s AND dorm_id=%s FOR UPDATE", (event_id, actor['dorm_id']))
-        event = cursor.fetchone()
-        if not event:
-            raise PermissionError("Подія недоступна")
-        cursor.execute("DELETE FROM event_registrations WHERE event_id=%s AND user_id=%s",
-                       (event_id, actor['user_id']))
-        if cursor.rowcount:
-            return
-        if event['starts_at'] <= datetime.now(event['starts_at'].tzinfo):
-            raise ValueError("Реєстрацію на цю подію завершено")
-        cursor.execute("SELECT count(*) AS n FROM event_registrations WHERE event_id=%s", (event_id,))
-        if event['capacity'] is not None and cursor.fetchone()['n'] >= event['capacity']:
-            raise ValueError("На подію немає вільних місць")
-        cursor.execute("INSERT INTO event_registrations (event_id, user_id) VALUES (%s, %s)", (event_id, actor['user_id']))
 
 
 def create_request(category, description):

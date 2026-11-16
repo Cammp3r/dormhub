@@ -7,57 +7,9 @@ from ui.module_a.room import RoomPage
 from ui.module_b.chats import ChatsPage
 from ui.module_c.parking import ParkingPage
 from ui.module_c.announcements import AnnouncementsPage
-from ui.module_c.events import EventsPage
 from ui.module_c.requests_page import RequestsPage
 from ui.admin import AdminPage
 from ui.forms import show_error
-
-
-class DepartmentsPage(ctk.CTkScrollableFrame):
-    title = "Факультети"
-
-    def __init__(self, master, user=None):
-        super().__init__(master, fg_color="transparent")
-        theme.page_title(self, "Факультети")
-        departments = repo.get_departments()
-        if not departments:
-            ctk.CTkLabel(self, text='Факультетів у базі поки немає.', text_color=theme.MUTED).pack(anchor='w', padx=24)
-        for department in departments:
-            row = theme.card(self, pady=4)
-            ctk.CTkLabel(
-                row,
-                text=department["department_name"],
-                font=theme.font(15, bold=True),
-                anchor="w",
-            ).pack(fill="x", padx=16, pady=14)
-
-
-class EnrollmentsPage(ctk.CTkScrollableFrame):
-    title = "Навчання"
-
-    def __init__(self, master, user):
-        super().__init__(master, fg_color="transparent")
-        theme.page_title(self, "Мої навчальні курси")
-        student = repo.get_student_for_user(user["user_id"])
-        enrollments = repo.get_enrollments(student["student_id"]) if student else []
-        if not enrollments:
-            ctk.CTkLabel(
-                self, text="Навчальних записів не знайдено.", text_color=theme.MUTED
-            ).pack(anchor="w", padx=24)
-        for enrollment in enrollments:
-            row = theme.card(self, pady=4)
-            ctk.CTkLabel(
-                row,
-                text=enrollment["course_title"],
-                font=theme.font(15, bold=True),
-                anchor="w",
-            ).pack(fill="x", padx=16, pady=(12, 2))
-            ctk.CTkLabel(
-                row,
-                text=f"{enrollment['department_name']}  ·  Оцінка: {enrollment['grade'] or 'ще немає'}",
-                text_color=theme.MUTED,
-                anchor="w",
-            ).pack(fill="x", padx=16, pady=(0, 12))
 
 
 class VacanciesPage(ctk.CTkScrollableFrame):
@@ -67,6 +19,15 @@ class VacanciesPage(ctk.CTkScrollableFrame):
         super().__init__(master, fg_color="transparent")
         theme.page_title(self, "Вакансії")
         vacancies = repo.get_vacancies()
+        student = repo.get_student_for_user(user["user_id"]) if user else None
+        applications = (
+            repo.get_applications(student["student_id"])
+            if student else []
+        )
+        applications_by_vacancy = {
+            application["vacancy_id"]: application
+            for application in applications
+        }
         if not vacancies:
             ctk.CTkLabel(self, text='Вакансій у базі поки немає.', text_color=theme.MUTED).pack(anchor='w', padx=24)
         for vacancy in vacancies:
@@ -80,45 +41,18 @@ class VacanciesPage(ctk.CTkScrollableFrame):
             ctk.CTkLabel(
                 row, text=vacancy["company_name"], text_color=theme.MUTED, anchor="w"
             ).pack(fill="x", padx=16, pady=(0, 12))
-
-
-class ApplicationsPage(ctk.CTkScrollableFrame):
-    title = "Мої заявки"
-
-    def __init__(self, master, user):
-        super().__init__(master, fg_color="transparent")
-        theme.page_title(self, "Мої заявки на вакансії")
-        student = repo.get_student_for_user(user["user_id"])
-        applications = repo.get_applications(student["student_id"]) if student else []
-        if not applications:
+            application = applications_by_vacancy.get(vacancy["vacancy_id"])
+            status = application["status"] if application else "Ви ще не подавали заявку"
             ctk.CTkLabel(
-                self, text="Заявок на вакансії не знайдено.", text_color=theme.MUTED
-            ).pack(anchor="w", padx=24)
-        for application in applications:
-            row = theme.card(self, pady=4)
-            ctk.CTkLabel(
-                row,
-                text=application["job_name"],
-                font=theme.font(15, bold=True),
-                anchor="w",
-            ).pack(fill="x", padx=16, pady=(12, 2))
-            ctk.CTkLabel(
-                row,
-                text=f"{application['company_name']}  ·  {application['status']}",
-                text_color=theme.MUTED,
-                anchor="w",
+                row, text=f"Моя заявка: {status}", text_color=theme.MUTED, anchor="w"
             ).pack(fill="x", padx=16, pady=(0, 12))
 
 
 PAGES = [
     ("💬  Чати кімнат", ChatsPage),
     ("📢  Оголошення", AnnouncementsPage),
-    ("🎉  Події", EventsPage),
     ("🔧  Мої звернення", RequestsPage),
-    ("🎓  Факультети", DepartmentsPage),
-    ("📚  Навчання", EnrollmentsPage),
     ("💼  Вакансії", VacanciesPage),
-    ("📝  Мої заявки", ApplicationsPage),
     ("🅿️  Паркінг", ParkingPage),
     ("🚪  Моя кімната", RoomPage),
     ("👤  Профіль", ProfilePage),

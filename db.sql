@@ -1,6 +1,6 @@
 -- Створення порожньої БД без демонстраційних записів: попередні дані буде видалено.
 BEGIN;
-DROP TABLE IF EXISTS request_status_history, maintenance_requests, request_categories, request_statuses, event_registrations, events, announcements, account_status_history, residencies, room_chat_messages, room_chats, applications, vacancies, enrollments, courses, parking_slots, dorm_admins, students, room_places, rooms, dorms, departments, users CASCADE;
+DROP TABLE IF EXISTS request_status_history, maintenance_requests, request_categories, request_statuses, announcements, account_status_history, residencies, room_chat_messages, room_chats, applications, vacancies, enrollments, courses, parking_slots, dorm_admins, students, room_places, rooms, dorms, departments, users CASCADE;
 DROP TYPE  IF EXISTS student_status, user_status, application_status CASCADE;
 
 
@@ -121,25 +121,6 @@ CREATE TABLE announcements (
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX announcements_dorm_idx ON announcements(dorm_id, created_at DESC);
-
-CREATE TABLE events (
-    id SERIAL PRIMARY KEY,
-    dorm_id INTEGER NOT NULL REFERENCES dorms(dorm_id),
-    author_id INTEGER NOT NULL REFERENCES users(user_id),
-    title VARCHAR(150) NOT NULL CHECK (length(trim(title)) > 0),
-    body TEXT NOT NULL CHECK (length(trim(body)) > 0),
-    starts_at TIMESTAMPTZ NOT NULL,
-    place VARCHAR(150) NOT NULL CHECK (length(trim(place)) > 0),
-    capacity INTEGER CHECK (capacity > 0),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX events_dorm_idx ON events(dorm_id, starts_at);
-CREATE TABLE event_registrations (
-    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    user_id INTEGER NOT NULL REFERENCES users(user_id),
-    registered_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (event_id, user_id)
-);
 
 -- Робочі довідники. Категорії та статуси інтерфейс читає з цих таблиць.
 CREATE TABLE request_categories (
