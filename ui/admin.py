@@ -28,10 +28,13 @@ class DormPage(DataPage):
 
 
 class ResidentsPage(DataPage):
+    page_size = 20
+
     def __init__(self, master, user):
         super().__init__(master, user)
         self.search = ''
         self.room_filter = 'Усі кімнати'
+        self.page = 0
         self.render()
 
     def render(self):
@@ -48,7 +51,12 @@ class ResidentsPage(DataPage):
         self.room_menu.pack(side='left', padx=16, pady=8)
         button(filters, 'Знайти', self.apply_filters)
         button(self, 'Додати мешканця', lambda: self.edit())
-        rows = repo.get_admin_residents(self.search, self.room_choices.get(self.room_filter))
+        rows = repo.get_admin_residents(
+            self.search,
+            self.room_choices.get(self.room_filter),
+            limit=self.page_size,
+            offset=self.page * self.page_size,
+        )
         if not rows:
             self.empty()
         for row in rows:
@@ -57,10 +65,36 @@ class ResidentsPage(DataPage):
             label(card, f"{row['email']} · Кімната: {row['room_number'] or 'не поселено'}")
             label(card, f"Дата народження: {row['date_of_birth'] or 'не вказано'} · Рік вступу: {row['enrollment_year'] or 'не вказано'}")
             button(card, 'Редагувати', lambda r=row: self.edit(r))
+        total_count = rows[0]['total_count'] if rows else 0
+        self.render_pagination(total_count)
+
+    def render_pagination(self, total_count):
+        navigation = ctk.CTkFrame(self, fg_color='transparent')
+        navigation.pack(fill='x', padx=24, pady=8)
+        ctk.CTkButton(
+            navigation, text='Назад', width=90,
+            state='normal' if self.page else 'disabled',
+            command=lambda: self.change_page(-1),
+        ).pack(side='left')
+        ctk.CTkLabel(
+            navigation,
+            text=f'Сторінка {self.page + 1} з {max(1, (total_count + self.page_size - 1) // self.page_size)}',
+            text_color=theme.MUTED,
+        ).pack(side='left', padx=12)
+        ctk.CTkButton(
+            navigation, text='Далі', width=90,
+            state='normal' if (self.page + 1) * self.page_size < total_count else 'disabled',
+            command=lambda: self.change_page(1),
+        ).pack(side='left')
+
+    def change_page(self, delta):
+        self.page = max(0, self.page + delta)
+        self.run(lambda: None)
 
     def apply_filters(self):
         self.search = self.search_entry.get()
         self.room_filter = self.room_menu.get()
+        self.page = 0
         self.run(lambda: None)
 
     def edit(self, row=None):
