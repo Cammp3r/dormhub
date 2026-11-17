@@ -139,8 +139,8 @@ class App(ctk.CTk):
         nav.pack(fill='both', expand=True)
         for text, page_cls in navigation:
             btn = ctk.CTkButton(nav, text=text, anchor="w", height=40, corner_radius=8,
-                                fg_color="transparent", text_color=("gray10", "gray90"),
-                                hover_color=("gray80", "gray25"), font=theme.font(14),
+                                fg_color="transparent", text_color="gray10",
+                                hover_color="gray80", font=theme.font(14),
                                 command=lambda p=page_cls: self.open_page(p))
             btn.pack(fill="x", padx=12, pady=2)
             self.nav_buttons[page_cls] = btn
@@ -149,12 +149,6 @@ class App(ctk.CTk):
         bottom.pack(side="bottom", fill="x", padx=12, pady=16)
         ctk.CTkButton(bottom, text="Вийти з акаунта", command=self.logout).pack(
             fill="x", pady=(0, 12))
-        theme_switch = ctk.CTkSwitch(bottom, text="Темна тема",
-                                     command=lambda: ctk.set_appearance_mode(
-                                         "dark" if theme_switch.get() else "light"))
-        theme_switch.pack(anchor="w", pady=(0, 10))
-        if ctk.get_appearance_mode() == "Dark":
-            theme_switch.select()
         self.content = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
         self.content.grid(row=0, column=1, sticky="nsew")
 
@@ -166,7 +160,7 @@ class App(ctk.CTk):
             return
         for cls, btn in self.nav_buttons.items():
             btn.configure(fg_color=theme.ACCENT if cls is page_cls else "transparent",
-                          text_color="white" if cls is page_cls else ("gray10", "gray90"))
+                          text_color="white" if cls is page_cls else "gray10")
         for w in self.content.winfo_children():
             w.destroy()
         try:
