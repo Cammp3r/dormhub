@@ -7,10 +7,13 @@ from psycopg2 import Error as DatabaseError
 
 
 class ChatsPage(ctk.CTkFrame):
+    message_page_size = 30
+
     def __init__(self, master, user):
         super().__init__(master, fg_color="transparent")
         self.user = user
         self.current_chat_id = None
+        self.message_page = 0
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -100,6 +103,7 @@ class ChatsPage(ctk.CTkFrame):
             return
 
         self.current_chat_id = chat_id
+        self.message_page = 0
         self.render_chat_list()
         for widget in self.right.winfo_children():
             widget.destroy()
@@ -118,6 +122,8 @@ class ChatsPage(ctk.CTkFrame):
             self.right, fg_color="transparent"
         )
         self.messages_frame.pack(fill="both", expand=True, padx=8, pady=8)
+        self.message_navigation = ctk.CTkFrame(self.right, fg_color="transparent")
+        self.message_navigation.pack(fill="x", padx=16, pady=(0, 8))
 
         bottom = ctk.CTkFrame(self.right, fg_color="transparent")
         bottom.pack(fill="x", padx=16, pady=(0, 16))
@@ -142,9 +148,13 @@ class ChatsPage(ctk.CTkFrame):
         for widget in self.messages_frame.winfo_children():
             widget.destroy()
 
-        for message in repo.get_room_chat_messages(
-            self.current_chat_id, self.user["user_id"]
-        ):
+        messages = repo.get_room_chat_messages(
+            self.current_chat_id,
+            self.user["user_id"],
+            limit=self.message_page_size,
+            offset=self.message_page * self.message_page_size,
+        )
+        for message in reversed(messages):
             mine = message["author_id"] == self.user["user_id"]
             row = ctk.CTkFrame(self.messages_frame, fg_color="transparent")
             row.pack(fill="x", pady=3)
@@ -174,7 +184,34 @@ class ChatsPage(ctk.CTkFrame):
                 text_color="#DBEAFE" if mine else theme.MUTED,
             ).pack(anchor="e", padx=12, pady=(0, 6))
 
+        total_count = messages[0]["total_count"] if messages else 0
+        for widget in self.message_navigation.winfo_children():
+            widget.destroy()
+        ctk.CTkButton(
+            self.message_navigation,
+            text="Новіші",
+            width=90,
+            state="normal" if self.message_page else "disabled",
+            command=lambda: self.change_message_page(-1),
+        ).pack(side="left")
+        ctk.CTkLabel(
+            self.message_navigation,
+            text=f"Сторінка {self.message_page + 1} "
+                 f"з {max(1, (total_count + self.message_page_size - 1) // self.message_page_size)}",
+            text_color=theme.MUTED,
+        ).pack(side="left", padx=12)
+        ctk.CTkButton(
+            self.message_navigation,
+            text="Старіші",
+            width=90,
+            state="normal" if (self.message_page + 1) * self.message_page_size < total_count else "disabled",
+            command=lambda: self.change_message_page(1),
+        ).pack(side="left")
         self.after(50, lambda: self.messages_frame._parent_canvas.yview_moveto(1.0))
+
+    def change_message_page(self, delta):
+        self.message_page = max(0, self.message_page + delta)
+        self.render_messages()
 
     def send(self):
         text = self.input.get().strip()
@@ -188,5 +225,6 @@ class ChatsPage(ctk.CTkFrame):
             show_error(self, error)
             return
         self.input.delete(0, "end")
+        self.message_page = 0
         self.render_messages()
         self.render_chat_list()

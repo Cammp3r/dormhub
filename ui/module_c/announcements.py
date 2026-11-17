@@ -31,7 +31,7 @@ class AnnouncementsPage(DataPage):
                 button(card, 'Видалити', lambda r=row: self.remove(r))
 
     def details(self, card, row):
-        pass
+        label(card, f"Адресат: гуртожиток №{row['dorm_number']} · {row['dorm_address']}")
 
     def edit(self, row=None):
         row = row or {}

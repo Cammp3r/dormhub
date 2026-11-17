@@ -326,13 +326,17 @@ def setup_first_admin(dorm_number, address, first_name, last_name, email):
         return user_id
 
 
-def get_admin_residents(search="", room_id=None):
+def get_admin_residents(search="", room_id=None, limit=None, offset=0):
+    if limit is not None and (limit < 1 or limit > 100):
+        raise ValueError("Розмір сторінки має бути від 1 до 100")
+    if offset < 0:
+        raise ValueError("Зсув сторінки не може бути від’ємним")
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
-        cursor.execute("""
+        query = """
             SELECT u.*, s.student_id, s.room_id, s.enrollment_year,
                    s.place_id, s.status AS student_status, r.room_number,
-                   p.place_number
+                   p.place_number, COUNT(*) OVER() AS total_count
             FROM users u JOIN students s ON s.user_id = u.user_id
             LEFT JOIN rooms r ON r.room_id = s.room_id
             LEFT JOIN room_places p ON p.place_id = s.place_id
@@ -340,7 +344,12 @@ def get_admin_residents(search="", room_id=None):
               AND (u.first_name || ' ' || u.last_name || ' ' || u.email) ILIKE %s
               AND (%s IS NULL OR s.room_id = %s)
             ORDER BY u.last_name, u.first_name, u.user_id
-        """, (actor['dorm_id'], '%' + search.strip() + '%', room_id, room_id))
+        """
+        parameters = [actor['dorm_id'], '%' + search.strip() + '%', room_id, room_id]
+        if limit is not None:
+            query += " LIMIT %s OFFSET %s"
+            parameters.extend([limit, offset])
+        cursor.execute(query, parameters)
         return cursor.fetchall()
 
 
@@ -548,8 +557,11 @@ def get_publications(kind):
     table = _publication_table(kind)
     with _transaction() as cursor:
         actor = _actor(cursor)
-        cursor.execute(f"""SELECT p.*, u.first_name || ' ' || u.last_name AS author_name
-            FROM {table} p JOIN users u ON u.user_id=p.author_id
+        cursor.execute(f"""SELECT p.*, d.dorm_number, d.address AS dorm_address,
+                u.first_name || ' ' || u.last_name AS author_name
+            FROM {table} p
+            JOIN dorms d ON d.dorm_id=p.dorm_id
+            JOIN users u ON u.user_id=p.author_id
             WHERE p.dorm_id=%s ORDER BY p.created_at DESC, p.id DESC""", (actor['dorm_id'],))
         return cursor.fetchall()
 
@@ -697,11 +709,15 @@ def get_room_chat_members(chat_id, user_id):
     )
 
 
-def get_room_chat_messages(chat_id, user_id):
+def get_room_chat_messages(chat_id, user_id, limit=30, offset=0):
+    if limit < 1 or limit > 100:
+        raise ValueError("Розмір сторінки має бути від 1 до 100")
+    if offset < 0:
+        raise ValueError("Зсув сторінки не може бути від’ємним")
     return _fetch_all(
         """
         SELECT rcm.message_id, rcm.user_id AS author_id, rcm.message AS text,
-               rcm.sent_at,
+               rcm.sent_at, COUNT(*) OVER() AS total_count,
                u.first_name || ' ' || u.last_name AS author_name
         FROM room_chat_messages AS rcm
         INNER JOIN users AS u ON u.user_id = rcm.user_id
@@ -714,9 +730,10 @@ def get_room_chat_messages(chat_id, user_id):
               WHERE current_student.user_id = %s
                 AND current_chat.room_chat_id = rcm.room_chat_id
           )
-        ORDER BY rcm.sent_at, rcm.message_id
+        ORDER BY rcm.sent_at DESC, rcm.message_id DESC
+        LIMIT %s OFFSET %s
         """,
-        (chat_id, user_id),
+        (chat_id, user_id, limit, offset),
     )
 
 

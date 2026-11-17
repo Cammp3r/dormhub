@@ -3,9 +3,9 @@ import customtkinter as ctk
 ACCENT = "#3B82F6"
 ACCENT_HOVER = "#2563EB"
 MY_BUBBLE = "#2563EB"
-OTHER_BUBBLE = ("#E5E7EB", "#374151")
-CARD_BG = ("#F3F4F6", "#1F2937")
-MUTED = ("#6B7280", "#9CA3AF")
+OTHER_BUBBLE = "#E5E7EB"
+CARD_BG = "#F3F4F6"
+MUTED = "#6B7280"
 
 def font(size=14, bold=False):
     return ctk.CTkFont(family="Segoe UI", size=size, weight="bold" if bold else "normal")
