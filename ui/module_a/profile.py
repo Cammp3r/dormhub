@@ -23,7 +23,11 @@ class ProfilePage(ctk.CTkScrollableFrame):
         self.name_label.pack(anchor="w")
         self.role = "Адміністратор" if repo.is_dorm_admin(user["user_id"]) else "Користувач"
         self.details_label = ctk.CTkLabel(
-            info, text=f"{user['email']}  ·  {self.role}", text_color=theme.MUTED, anchor="w")
+            info,
+            text=self._details_text(),
+            text_color=theme.MUTED,
+            anchor="w",
+        )
         self.details_label.pack(anchor="w")
 
         form = theme.card(self)
@@ -56,6 +60,10 @@ class ProfilePage(ctk.CTkScrollableFrame):
             return
         self.user.update(values)
         self.name_label.configure(text=repo.get_user_name(self.user))
-        self.details_label.configure(text=f"{self.user['email']}  ·  {self.role}")
+        self.details_label.configure(text=self._details_text())
         self.winfo_toplevel().sidebar_name.configure(text=repo.get_user_name(self.user))
         self.status.configure(text="✓ Збережено", text_color="#10B981")
+
+    def _details_text(self):
+        birth_date = self.user.get("date_of_birth") or "не вказано"
+        return f"{self.user['email']}  ·  Дата народження: {birth_date}  ·  {self.role}"
