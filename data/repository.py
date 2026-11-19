@@ -3,6 +3,8 @@ from contextlib import contextmanager
 from datetime import date
 
 from db import get_db_connection
+from data.models import Application, Vacancy, close_database, connect_database
+from peewee import DatabaseError as PeeweeDatabaseError
 
 
 current_user = None
@@ -234,14 +236,21 @@ def is_dorm_admin(user_id):
 def get_vacancies():
     with _transaction() as cursor:
         _actor(cursor)
-        cursor.execute(
-            """
-            SELECT vacancy_id, company_name, job_name
-            FROM vacancies
-            ORDER BY vacancy_id
-            """
+    try:
+        connect_database()
+        return list(
+            Vacancy.select(
+                Vacancy.vacancy_id,
+                Vacancy.company_name,
+                Vacancy.job_name,
+            )
+            .order_by(Vacancy.vacancy_id)
+            .dicts()
         )
-        return cursor.fetchall()
+    except PeeweeDatabaseError as error:
+        raise RuntimeError("Не вдалося завантажити вакансії") from error
+    finally:
+        close_database()
 
 
 def get_applications(student_id=None):
@@ -253,19 +262,31 @@ def get_applications(student_id=None):
             return []
         if student_id is not None and student_id != student['student_id']:
             raise PermissionError("Не можна переглядати заявки іншого студента")
-        cursor.execute(
-            """
-            SELECT a.application_id, a.student_id, a.vacancy_id,
-                   a.application_date, a.status,
-                   v.company_name, v.job_name
-            FROM applications AS a
-            INNER JOIN vacancies AS v ON v.vacancy_id = a.vacancy_id
-            WHERE a.student_id = %s
-            ORDER BY a.application_date DESC, a.application_id
-            """,
-            (student['student_id'],),
+        requested_student_id = student['student_id']
+    try:
+        connect_database()
+        return list(
+            Application.select(
+                Application.application_id,
+                Application.student_id,
+                Application.vacancy_id,
+                Application.application_date,
+                Application.status,
+                Vacancy.company_name,
+                Vacancy.job_name,
+            )
+            .join(Vacancy)
+            .where(Application.student_id == requested_student_id)
+            .order_by(
+                Application.application_date.desc(),
+                Application.application_id,
+            )
+            .dicts()
         )
-        return cursor.fetchall()
+    except PeeweeDatabaseError as error:
+        raise RuntimeError("Не вдалося завантажити заявки") from error
+    finally:
+        close_database()
 
 
 def get_parking_slots():
