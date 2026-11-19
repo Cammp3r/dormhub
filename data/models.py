@@ -1,10 +1,12 @@
 from peewee import (
     CharField,
+    DateField,
     ForeignKeyField,
     IntegerField,
     Model,
     PostgresqlDatabase,
-    DateField,
+    TextField,
+    TimestampField,
 )
 
 from db import get_database_settings
@@ -36,6 +38,47 @@ class Student(BaseModel):
 
     class Meta:
         table_name = "students"
+
+
+class Dorm(BaseModel):
+    dorm_id = IntegerField(primary_key=True, column_name="dorm_id")
+    dorm_number = IntegerField()
+    address = CharField(max_length=150)
+
+    class Meta:
+        table_name = "dorms"
+
+
+class User(BaseModel):
+    user_id = IntegerField(primary_key=True, column_name="user_id")
+    first_name = CharField(max_length=50)
+    last_name = CharField(max_length=50)
+    email = CharField(max_length=150)
+    date_of_birth = DateField(null=True)
+    registration_date = DateField(null=True)
+    status = CharField(max_length=20)
+    dorm = ForeignKeyField(
+        Dorm,
+        column_name="dorm_id",
+        backref="users",
+        null=True,
+        lazy_load=False,
+    )
+
+    class Meta:
+        table_name = "users"
+
+
+class Announcement(BaseModel):
+    id = IntegerField(primary_key=True)
+    dorm = ForeignKeyField(Dorm, column_name="dorm_id", lazy_load=False)
+    author = ForeignKeyField(User, column_name="author_id", lazy_load=False)
+    title = CharField(max_length=150)
+    body = TextField()
+    created_at = TimestampField(utc=True)
+
+    class Meta:
+        table_name = "announcements"
 
 
 class Vacancy(BaseModel):

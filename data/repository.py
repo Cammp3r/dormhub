@@ -3,8 +3,16 @@ from contextlib import contextmanager
 from datetime import date
 
 from db import get_db_connection
-from data.models import Application, Vacancy, close_database, connect_database
+from data.models import (
+    Announcement,
+    Application,
+    User,
+    Vacancy,
+    close_database,
+    connect_database,
+)
 from peewee import DatabaseError as PeeweeDatabaseError
+from peewee import fn
 
 
 current_user = None
@@ -78,16 +86,27 @@ def get_user(user_id):
         actor = _actor(cursor)
         if actor['user_id'] != user_id:
             raise PermissionError("Не можна переглядати профіль іншого користувача")
-        cursor.execute(
-            """
-            SELECT user_id, first_name, last_name, email, date_of_birth,
-                   registration_date, status, dorm_id
-            FROM users
-            WHERE user_id = %s
-            """,
-            (user_id,),
+    try:
+        connect_database()
+        rows = list(
+            User.select(
+                User.user_id,
+                User.first_name,
+                User.last_name,
+                User.email,
+                User.date_of_birth,
+                User.registration_date,
+                User.status,
+                User.dorm_id,
+            )
+            .where(User.user_id == user_id)
+            .dicts()
         )
-        return cursor.fetchone()
+        return rows[0] if rows else None
+    except PeeweeDatabaseError as error:
+        raise RuntimeError("Не вдалося завантажити профіль") from error
+    finally:
+        close_database()
 
 
 def get_all_users():
@@ -129,30 +148,28 @@ def get_user_name(user):
 
 
 def update_profile(user_id, first_name, last_name, email):
-    connection = get_db_connection()
-    if connection is None:
-        raise RuntimeError("Не вдалося підключитися до бази даних")
+    with _transaction() as cursor:
+        actor = _actor(cursor)
+        if actor['user_id'] != user_id:
+            raise PermissionError('Можна редагувати лише власний профіль')
     try:
-        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
-            actor = _actor(cursor)
-            if actor['user_id'] != user_id:
-                raise PermissionError('Можна редагувати лише власний профіль')
-            cursor.execute(
-                """
-                UPDATE users
-                SET first_name = %s, last_name = %s, email = %s
-                WHERE user_id = %s
-                """,
-                (first_name, last_name, email, user_id),
+        database = connect_database()
+        with database.atomic():
+            updated = (
+                User.update(
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=email,
+                )
+                .where(User.user_id == user_id)
+                .execute()
             )
-            if cursor.rowcount == 0:
+            if updated == 0:
                 raise ValueError(f"Користувача з user_id={user_id} не знайдено")
-        connection.commit()
-    except Exception:
-        connection.rollback()
-        raise
+    except PeeweeDatabaseError as error:
+        raise RuntimeError("Не вдалося оновити профіль") from error
     finally:
-        connection.close()
+        close_database()
 
 
 def get_room_info(room_id):
@@ -319,18 +336,31 @@ def login(first_name, last_name):
         raise ValueError("Введіть ім’я та прізвище")
     if len(first_name) > 50 or len(last_name) > 50:
         raise ValueError("Ім’я та прізвище мають містити до 50 символів")
-    users = _fetch_all(
-        """
-        SELECT user_id, first_name, last_name, email, date_of_birth,
-               registration_date, status, dorm_id
-        FROM users
-        WHERE lower(first_name) = lower(%s)
-          AND lower(last_name) = lower(%s)
-          AND status = 'active'
-        LIMIT 2
-        """,
-        (first_name, last_name),
-    )
+    try:
+        connect_database()
+        users = list(
+            User.select(
+                User.user_id,
+                User.first_name,
+                User.last_name,
+                User.email,
+                User.date_of_birth,
+                User.registration_date,
+                User.status,
+                User.dorm_id,
+            )
+            .where(
+                (fn.LOWER(User.first_name) == first_name.lower())
+                & (fn.LOWER(User.last_name) == last_name.lower())
+                & (User.status == 'active')
+            )
+            .limit(2)
+            .dicts()
+        )
+    except PeeweeDatabaseError as error:
+        raise RuntimeError("Не вдалося виконати вхід") from error
+    finally:
+        close_database()
     if not users:
         raise ValueError("Користувача з таким ім’ям та прізвищем не знайдено")
     if len(users) > 1:
@@ -614,16 +644,38 @@ def get_residency_history():
 
 
 def get_publications(kind):
-    table = _publication_table(kind)
+    _publication_table(kind)
     with _transaction() as cursor:
         actor = _actor(cursor)
-        cursor.execute(f"""SELECT p.*, d.dorm_number, d.address AS dorm_address,
-                u.first_name || ' ' || u.last_name AS author_name
-            FROM {table} p
-            JOIN dorms d ON d.dorm_id=p.dorm_id
-            JOIN users u ON u.user_id=p.author_id
-            WHERE p.dorm_id=%s ORDER BY p.created_at DESC, p.id DESC""", (actor['dorm_id'],))
-        return cursor.fetchall()
+    try:
+        connect_database()
+        rows = (
+            Announcement.select(
+                Announcement.id,
+                Announcement.dorm_id,
+                Announcement.author_id,
+                Announcement.title,
+                Announcement.body,
+                Announcement.created_at,
+                User.first_name.alias("author_first_name"),
+                User.last_name.alias("author_last_name"),
+            )
+            .join(User, on=(Announcement.author == User.user_id))
+            .where(Announcement.dorm_id == actor['dorm_id'])
+            .order_by(Announcement.created_at.desc(), Announcement.id.desc())
+            .dicts()
+        )
+        return [
+            {
+                **row,
+                "author_name": f"{row.pop('author_first_name')} {row.pop('author_last_name')}",
+            }
+            for row in rows
+        ]
+    except PeeweeDatabaseError as error:
+        raise RuntimeError("Не вдалося завантажити оголошення") from error
+    finally:
+        close_database()
 
 
 def _publication_table(kind):
@@ -633,30 +685,64 @@ def _publication_table(kind):
 
 
 def save_publication(kind, title, body, publication_id=None):
-    table = _publication_table(kind)
+    _publication_table(kind)
     title, body = _required(title, "Заголовок", 150), _required(body, "Опис", 10000)
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
-        if publication_id is None:
-            cursor.execute(f"""INSERT INTO {table} (dorm_id, author_id, title, body)
-                VALUES (%s, %s, %s, %s)""",
-                           (actor['dorm_id'], actor['user_id'], title, body))
-        else:
-            cursor.execute(f"SELECT id FROM {table} WHERE id=%s AND dorm_id=%s FOR UPDATE",
-                           (publication_id, actor['dorm_id']))
-            if not cursor.fetchone():
-                raise PermissionError("Публікацію вашого гуртожитку не знайдено")
-            cursor.execute(f"UPDATE {table} SET title=%s, body=%s WHERE id=%s",
-                           (title, body, publication_id))
+    try:
+        database = connect_database()
+        with database.atomic():
+            if publication_id is None:
+                Announcement.create(
+                    dorm=actor['dorm_id'],
+                    author=actor['user_id'],
+                    title=title,
+                    body=body,
+                )
+            else:
+                publication = (
+                    Announcement.select()
+                    .where(
+                        (Announcement.id == publication_id)
+                        & (Announcement.dorm_id == actor['dorm_id'])
+                    )
+                    .for_update()
+                    .get_or_none()
+                )
+                if publication is None:
+                    raise PermissionError("Публікацію вашого гуртожитку не знайдено")
+                (
+                    Announcement.update(title=title, body=body)
+                    .where(Announcement.id == publication_id)
+                    .execute()
+                )
+    except PeeweeDatabaseError as error:
+        raise RuntimeError("Не вдалося зберегти оголошення") from error
+    finally:
+        close_database()
 
 
 def delete_publication(kind, publication_id):
-    table = _publication_table(kind)
+    _publication_table(kind)
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
-        cursor.execute(f"DELETE FROM {table} WHERE id=%s AND dorm_id=%s", (publication_id, actor['dorm_id']))
-        if not cursor.rowcount:
-            raise PermissionError("Публікацію вашого гуртожитку не знайдено")
+    try:
+        database = connect_database()
+        with database.atomic():
+            deleted = (
+                Announcement.delete()
+                .where(
+                    (Announcement.id == publication_id)
+                    & (Announcement.dorm_id == actor['dorm_id'])
+                )
+                .execute()
+            )
+            if deleted == 0:
+                raise PermissionError("Публікацію вашого гуртожитку не знайдено")
+    except PeeweeDatabaseError as error:
+        raise RuntimeError("Не вдалося видалити оголошення") from error
+    finally:
+        close_database()
 
 
 def create_request(category, description):
