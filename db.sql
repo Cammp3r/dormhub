@@ -36,7 +36,7 @@ CREATE TABLE rooms (
     dorm_id     INTEGER NOT NULL REFERENCES dorms(dorm_id) ON DELETE RESTRICT,
     room_number VARCHAR(10) NOT NULL CHECK (room_number = trim(room_number) AND room_number <> ''),
     floor       INTEGER,
-    capacity    INTEGER NOT NULL CHECK (capacity > 0),
+    capacity    INTEGER NOT NULL CHECK (capacity BETWEEN 1 AND 4),
     is_available BOOLEAN NOT NULL DEFAULT TRUE,
     UNIQUE (dorm_id, room_number),
     UNIQUE (room_id, dorm_id)

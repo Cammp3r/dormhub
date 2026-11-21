@@ -118,6 +118,17 @@ class RoomsPage(DataPage):
         self.clear('Кімнати')
         button(self, 'Додати кімнату', lambda: self.edit())
         rows = repo.get_admin_rooms()
+        report = repo.get_room_occupancy_report()
+        if report:
+            summary = theme.card(self)
+            label(summary, 'Аналітика зайнятості кімнат', bold=True)
+            for row in report:
+                label(
+                    summary,
+                    f"Кімната {row['room_number']}: "
+                    f"{row['resident_count']}/{row['capacity']} мешканців; "
+                    f"вільних місць: {row['free_places']}",
+                )
         if not rows:
             self.empty()
         for row in rows:

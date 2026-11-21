@@ -57,6 +57,14 @@ def _required(value, label, limit=None):
     return value
 
 
+def validate_room_capacity(capacity):
+    if not isinstance(capacity, int) or isinstance(capacity, bool):
+        raise ValueError("Місткість кімнати має бути цілим числом")
+    if not 1 <= capacity <= 4:
+        raise ValueError("Місткість кімнати має бути від 1 до 4")
+    return capacity
+
+
 def _fetch_all(query, parameters=()):
     connection = get_db_connection()
     if connection is None:
@@ -495,6 +503,34 @@ def get_admin_rooms():
         return cursor.fetchall()
 
 
+def get_room_occupancy_report():
+    with _transaction() as cursor:
+        actor = _actor(cursor, admin=True)
+        cursor.execute(
+            """
+            SELECT d.dorm_number,
+                   r.room_id,
+                   r.room_number,
+                   r.floor,
+                   r.capacity,
+                   COUNT(DISTINCT s.student_id)::int AS resident_count,
+                   (r.capacity - COUNT(DISTINCT s.student_id))::int AS free_places
+            FROM dorms d
+            JOIN rooms r ON r.dorm_id = d.dorm_id
+            LEFT JOIN students s ON s.room_id = r.room_id
+            LEFT JOIN users u ON u.user_id = s.user_id
+            WHERE d.dorm_id = %s
+              AND r.capacity <= 4
+            GROUP BY d.dorm_id, d.dorm_number,
+                     r.room_id, r.room_number, r.floor, r.capacity
+            HAVING COUNT(DISTINCT s.student_id) <= r.capacity
+            ORDER BY r.floor, r.room_number, r.room_id
+            """,
+            (actor['dorm_id'],),
+        )
+        return cursor.fetchall()
+
+
 def get_admin_dorm():
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
@@ -528,8 +564,7 @@ def save_room(room_number, floor, capacity, is_available=True, room_id=None):
         floor, capacity = int(floor), int(capacity)
     except ValueError:
         raise ValueError("Поверх і місткість мають бути цілими числами") from None
-    if capacity < 1:
-        raise ValueError("Місткість має бути більшою за нуль")
+    validate_room_capacity(capacity)
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
         if room_id is None:
@@ -602,7 +637,8 @@ def change_residency(user_id, place_id, reason):
             raise ValueError("Мешканець уже на цьому місці" if place_id else "Мешканця ще не поселено")
         place_ids = [value for value in (student['place_id'], place_id) if value is not None]
         if place_ids:
-            cursor.execute("""SELECT p.*, r.dorm_id, r.is_available AS room_is_available
+            cursor.execute("""SELECT p.*, r.dorm_id, r.capacity,
+                    r.is_available AS room_is_available
                 FROM room_places p JOIN rooms r ON r.room_id=p.room_id
                 WHERE p.place_id = ANY(%s)
                 ORDER BY p.place_id
@@ -621,6 +657,21 @@ def change_residency(user_id, place_id, reason):
             cursor.execute("SELECT 1 FROM students WHERE place_id=%s FOR UPDATE", (place_id,))
             if cursor.fetchone():
                 raise ValueError("Місце вже зайняте іншим мешканцем")
+            cursor.execute(
+                "SELECT room_id FROM rooms WHERE room_id=%s FOR UPDATE",
+                (place['room_id'],),
+            )
+            cursor.execute(
+                """SELECT COUNT(*) AS resident_count
+                   FROM students
+                   WHERE room_id=%s AND student_id<>%s""",
+                (place['room_id'], student['student_id']),
+            )
+            resident_count = cursor.fetchone()['resident_count']
+            if resident_count >= place['capacity']:
+                raise ValueError(
+                    f"Кімната досягла максимальної місткості {place['capacity']} мешканців"
+                )
         cursor.execute("""UPDATE residencies SET ended_at=CURRENT_TIMESTAMP, ended_by=%s, end_reason=%s
             WHERE student_id=%s AND ended_at IS NULL""", (actor['user_id'], reason, student['student_id']))
         if place_id is not None:

@@ -38,6 +38,15 @@ ALTER TABLE request_status_history DROP CONSTRAINT IF EXISTS request_status_hist
 ALTER TABLE maintenance_requests ALTER COLUMN status DROP DEFAULT;
 ALTER TABLE rooms ALTER COLUMN capacity DROP DEFAULT;
 
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM rooms WHERE capacity > 4) THEN
+        RAISE EXCEPTION 'Зменште місткість кімнат зі значенням capacity > 4 до 4 або менше перед міграцією';
+    END IF;
+END $$;
+ALTER TABLE rooms DROP CONSTRAINT IF EXISTS rooms_capacity_check;
+ALTER TABLE rooms ADD CONSTRAINT rooms_capacity_check CHECK (capacity BETWEEN 1 AND 4);
+
 CREATE TABLE IF NOT EXISTS room_places (
     place_id     SERIAL PRIMARY KEY,
     room_id      INTEGER NOT NULL REFERENCES rooms(room_id) ON DELETE RESTRICT,
