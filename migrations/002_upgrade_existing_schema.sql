@@ -1,8 +1,7 @@
 -- Оновлення наявної БД після попередньої версії db.sql.
 -- Зберігає користувачів, кімнати, повідомлення та решту наявних записів.
-BEGIN;
--- Події більше не входять до MVP; пов’язані записи видаляються разом із таблицями.
-DROP TABLE IF EXISTS event_registrations, events CASCADE;
+-- Події більше не входять до MVP. Їхні таблиці не видаляються міграцією,
+-- щоб оновлення не втрачало дані; вони залишаються поза робочим API.
 CREATE TABLE IF NOT EXISTS request_categories (
     name TEXT PRIMARY KEY CHECK (name = trim(name) AND name <> ''),
     sort_order INTEGER NOT NULL DEFAULT 0
@@ -132,4 +131,3 @@ BEGIN
             FOREIGN KEY (status) REFERENCES request_statuses(name) ON UPDATE CASCADE;
     END IF;
 END $$;
-COMMIT;
