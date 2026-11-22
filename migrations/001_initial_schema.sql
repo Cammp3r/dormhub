@@ -1,7 +1,6 @@
--- Створення порожньої БД без демонстраційних записів: попередні дані буде видалено.
-BEGIN;
-DROP TABLE IF EXISTS request_status_history, maintenance_requests, request_categories, request_statuses, announcements, account_status_history, residencies, room_chat_messages, room_chats, applications, vacancies, enrollments, courses, parking_slots, dorm_admins, students, room_places, rooms, dorms, departments, users CASCADE;
-DROP TYPE  IF EXISTS student_status, user_status, application_status CASCADE;
+-- Схема створюється послідовними міграціями.
+-- Запустіть: .venv\Scripts\python migrate.py
+-- Старий руйнівний SQL більше не використовується.
 
 
 CREATE TYPE student_status AS ENUM ('enrolled', 'on_leave', 'graduated', 'expelled');
@@ -205,4 +204,3 @@ CREATE TABLE applications (
     UNIQUE (student_id, vacancy_id)
 );
 
-COMMIT;
