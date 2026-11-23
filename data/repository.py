@@ -839,6 +839,53 @@ def get_requests(admin=False, status="Усі"):
         return rows
 
 
+def get_repeated_request_report():
+    """Показує категорії звернень, які повторюються щонайменше двічі на поверсі."""
+    with _transaction() as cursor:
+        actor = _actor(cursor, admin=True)
+        cursor.execute(
+            """
+            WITH request_stats AS (
+                SELECT q.category,
+                       r.floor,
+                       COUNT(*)::int AS request_count,
+                       COUNT(DISTINCT q.author_id)::int AS resident_count
+                FROM maintenance_requests AS q
+                JOIN rooms AS r
+                  ON r.room_id = q.room_id
+                 AND r.dorm_id = q.dorm_id
+                JOIN users AS u
+                  ON u.user_id = q.author_id
+                JOIN dorms AS d
+                  ON d.dorm_id = q.dorm_id
+                WHERE q.dorm_id = %s
+                GROUP BY q.category, r.floor
+                HAVING COUNT(*) >= 2
+            ),
+            ranked_requests AS (
+                SELECT request_stats.*,
+                       RANK() OVER (
+                           PARTITION BY category
+                           ORDER BY request_count DESC,
+                                    resident_count DESC
+                       ) AS category_rank
+                FROM request_stats
+            )
+            SELECT category,
+                   floor,
+                   request_count,
+                   resident_count,
+                   category_rank
+            FROM ranked_requests
+            ORDER BY request_count DESC,
+                     category,
+                     floor
+            """,
+            (actor['dorm_id'],),
+        )
+        return cursor.fetchall()
+
+
 def update_request(request_id, status, response):
     response = _required(response, "Відповідь / причина зміни", 10000)
     with _transaction() as cursor:
