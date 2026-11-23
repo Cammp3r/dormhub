@@ -18,6 +18,19 @@ class RequestsPage(DataPage):
             menu = ctk.CTkOptionMenu(self, values=['Усі'] + repo.get_request_statuses(), command=self.filter)
             menu.set(self.status_filter)
             menu.pack(anchor='w', padx=24, pady=4)
+            report = repo.get_repeated_request_report()
+            if report:
+                card = theme.card(self)
+                label(card, 'Аналітика повторних звернень', bold=True)
+                for row in report:
+                    floor = f"поверх {row['floor']}" if row['floor'] is not None else 'поверх не вказано'
+                    label(
+                        card,
+                        f"{row['category']} · {floor}: "
+                        f"{row['request_count']} звернення, "
+                        f"{row['resident_count']} мешканців; "
+                        f"ранг у категорії: {row['category_rank']}",
+                    )
         else:
             button(self, 'Створити звернення', lambda: self.guard(self.create))
         rows = repo.get_requests(admin=self.admin, status=self.status_filter)
