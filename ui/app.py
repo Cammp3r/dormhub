@@ -17,9 +17,15 @@ class VacanciesPage(ctk.CTkScrollableFrame):
 
     def __init__(self, master, user=None):
         super().__init__(master, fg_color="transparent")
+        self.user = user
+        self.render()
+
+    def render(self):
+        for widget in self.winfo_children():
+            widget.destroy()
         theme.page_title(self, "Вакансії")
         vacancies = repo.get_vacancies()
-        student = repo.get_student_for_user(user["user_id"]) if user else None
+        student = repo.get_student_for_user(self.user["user_id"]) if self.user else None
         applications = (
             repo.get_applications(student["student_id"])
             if student else []
@@ -42,10 +48,29 @@ class VacanciesPage(ctk.CTkScrollableFrame):
                 row, text=vacancy["company_name"], text_color=theme.MUTED, anchor="w"
             ).pack(fill="x", padx=16, pady=(0, 12))
             application = applications_by_vacancy.get(vacancy["vacancy_id"])
-            status = application["status"] if application else "Ви ще не подавали заявку"
+            if not student:
+                status = "Відгукуватися на вакансії можуть лише мешканці"
+            else:
+                status = application["status"] if application else "Ви ще не подавали заявку"
             ctk.CTkLabel(
-                row, text=f"Моя заявка: {status}", text_color=theme.MUTED, anchor="w"
+                row,
+                text=f"Моя заявка: {status}" if student else status,
+                text_color=theme.MUTED,
+                anchor="w",
             ).pack(fill="x", padx=16, pady=(0, 12))
+            if student and not application:
+                ctk.CTkButton(
+                    row,
+                    text="Відгукнутися",
+                    command=lambda vacancy_id=vacancy["vacancy_id"]: self.apply(vacancy_id),
+                ).pack(anchor="e", padx=16, pady=(0, 12))
+
+    def apply(self, vacancy_id):
+        try:
+            repo.apply_for_vacancy(vacancy_id)
+            self.render()
+        except (ValueError, RuntimeError, PermissionError, DatabaseError) as error:
+            show_error(self, error)
 
 
 PAGES = [

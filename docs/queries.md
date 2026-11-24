@@ -92,3 +92,56 @@ ORDER BY request_count DESC,
 - `HAVING COUNT(*) >= 2` залишає лише повторювані проблеми.
 - CTE `ranked_requests` застосовує віконну функцію `RANK()` всередині кожної категорії.
 - Звіт доступний лише адміністратору і обмежений гуртожитком поточного користувача.
+
+## Заявки на вакансії
+
+Бізнес-питання:
+
+Скільки заявок і унікальних заявників має кожна вакансія та як заявки розподілені
+за статусами?
+
+```sql
+WITH vacancy_application_stats AS (
+    SELECT v.vacancy_id,
+           v.company_name,
+           v.job_name,
+           COUNT(a.application_id)::int AS total_applications,
+           COUNT(DISTINCT u.user_id)::int AS applicant_count,
+           COUNT(a.application_id) FILTER (
+               WHERE a.status = 'submitted'
+           )::int AS submitted_count,
+           COUNT(a.application_id) FILTER (
+               WHERE a.status = 'accepted'
+           )::int AS accepted_count,
+           COUNT(a.application_id) FILTER (
+               WHERE a.status = 'rejected'
+           )::int AS rejected_count
+    FROM vacancies AS v
+    LEFT JOIN applications AS a ON a.vacancy_id = v.vacancy_id
+    LEFT JOIN students AS s ON s.student_id = a.student_id
+    LEFT JOIN users AS u ON u.user_id = s.user_id
+    GROUP BY v.vacancy_id, v.company_name, v.job_name
+)
+SELECT vacancy_id,
+       company_name,
+       job_name,
+       total_applications,
+       applicant_count,
+       submitted_count,
+       accepted_count,
+       rejected_count
+FROM vacancy_application_stats
+ORDER BY company_name, job_name, vacancy_id;
+```
+
+Пояснення:
+
+- `applications`, `vacancies`, `students` і `users` зв’язуються, щоб підсумувати
+  заявки за вакансією та порахувати унікальних заявників.
+- CTE `vacancy_application_stats` групує записи за вакансією.
+- `LEFT JOIN` зберігає у звіті вакансії, на які ще не подали заявок.
+- `COUNT` рахує всі заявки та окремо заявки зі статусами `submitted`, `accepted`
+  і `rejected`.
+- Запит показує кількості, не розраховує відсоток прийняття і не формує рейтинг.
+- Звіт доступний адміністраторам; вакансії не прив’язані до окремого гуртожитку,
+  тому підсумок охоплює всі вакансії в базі.

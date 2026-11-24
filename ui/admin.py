@@ -214,23 +214,64 @@ class ResidenciesPage(DataPage):
         Form(self, 'Виселення' if checkout else 'Поселення / переселення', fields, save, self.render)
 
 
+class VacancyAnalyticsPage(DataPage):
+    def __init__(self, master, user):
+        super().__init__(master, user)
+        self.render()
+
+    def render(self):
+        self.clear('Аналітика заявок на вакансії')
+        button(self, 'Додати вакансію', self.create_vacancy)
+        rows = repo.get_vacancy_application_report()
+        if not rows:
+            self.empty('Вакансій поки немає.')
+            return
+        for row in rows:
+            card = theme.card(self)
+            label(card, f"{row['company_name']} · {row['job_name']}", bold=True)
+            label(
+                card,
+                f"Заявок: {row['total_applications']} · "
+                f"унікальних заявників: {row['applicant_count']}",
+            )
+            label(
+                card,
+                f"Подано: {row['submitted_count']} · "
+                f"прийнято: {row['accepted_count']} · "
+                f"відхилено: {row['rejected_count']}",
+            )
+
+    def create_vacancy(self):
+        Form(
+            self,
+            'Нова вакансія',
+            [
+                ('company_name', 'Назва компанії', '', None),
+                ('job_name', 'Назва вакансії', '', None),
+            ],
+            lambda values: repo.create_vacancy(**values),
+            self.render,
+        )
+
+
 class AdminPage(ctk.CTkFrame):
     def __init__(self, master, user):
         super().__init__(master, fg_color='transparent')
-        # Перевірка доступу також виконується всередині кожної операції repository.
-        repo.get_admin_rooms()
         theme.page_title(self, 'Адміністративний кабінет')
         tabs = ctk.CTkTabview(self)
         tabs.pack(fill='both', expand=True, padx=12, pady=(0, 12))
-        for name, cls in [('Гуртожиток', DormPage), ('Мешканці', ResidentsPage), ('Кімнати', RoomsPage),
-                          ('Поселення', ResidenciesPage), ('Звернення', RequestsPage)]:
-            tab = tabs.add(name)
-            if cls is RequestsPage:
-                cls(tab, user, admin=True).pack(fill='both', expand=True)
-            else:
-                cls(tab, user).pack(fill='both', expand=True)
-        # Створюємо сторінки повторно при зміні вкладки, щоб форми бачили актуальні дані.
+        self.tab_classes = {
+            'Гуртожиток': DormPage,
+            'Мешканці': ResidentsPage,
+            'Кімнати': RoomsPage,
+            'Поселення': ResidenciesPage,
+            'Звернення': RequestsPage,
+            'Аналітика вакансій': VacancyAnalyticsPage,
+        }
+        for name in self.tab_classes:
+            tabs.add(name)
         tabs.configure(command=lambda: self.refresh_tab(tabs, user))
+        self.refresh_tab(tabs, user)
 
     def refresh_tab(self, tabs, user):
         from psycopg2 import Error as DatabaseError
@@ -239,8 +280,7 @@ class AdminPage(ctk.CTkFrame):
         tab = tabs.tab(name)
         for child in tab.winfo_children():
             child.destroy()
-        cls = {'Гуртожиток': DormPage, 'Мешканці': ResidentsPage, 'Кімнати': RoomsPage,
-               'Поселення': ResidenciesPage, 'Звернення': RequestsPage}[name]
+        cls = self.tab_classes[name]
         try:
             page = cls(tab, user, admin=True) if cls is RequestsPage else cls(tab, user)
             page.pack(fill='both', expand=True)

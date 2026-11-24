@@ -314,6 +314,91 @@ def get_applications(student_id=None):
         close_database()
 
 
+def apply_for_vacancy(vacancy_id):
+    if not isinstance(vacancy_id, int) or isinstance(vacancy_id, bool) or vacancy_id <= 0:
+        raise ValueError("Некоректний номер вакансії")
+    with _transaction() as cursor:
+        actor = _actor(cursor)
+        cursor.execute(
+            "SELECT student_id FROM students WHERE user_id = %s",
+            (actor["user_id"],),
+        )
+        student = cursor.fetchone()
+        if not student:
+            raise PermissionError("Подавати заявки на вакансії можуть лише мешканці")
+        cursor.execute(
+            """
+            INSERT INTO applications (student_id, vacancy_id)
+            VALUES (%s, %s)
+            ON CONFLICT (student_id, vacancy_id) DO NOTHING
+            RETURNING application_id
+            """,
+            (student["student_id"], vacancy_id),
+        )
+        application = cursor.fetchone()
+        if not application:
+            raise ValueError("Ви вже відгукнулися на цю вакансію")
+        return application["application_id"]
+
+
+def create_vacancy(company_name, job_name):
+    company_name = _required(company_name, "Назва компанії", 100)
+    job_name = _required(job_name, "Назва вакансії", 100)
+    with _transaction() as cursor:
+        _actor(cursor, admin=True)
+        cursor.execute(
+            """
+            INSERT INTO vacancies (company_name, job_name)
+            VALUES (%s, %s)
+            RETURNING vacancy_id
+            """,
+            (company_name, job_name),
+        )
+        return cursor.fetchone()["vacancy_id"]
+
+
+def get_vacancy_application_report():
+    """Підсумовує кількість заявок і заявників за кожною вакансією."""
+    with _transaction() as cursor:
+        _actor(cursor, admin=True)
+        cursor.execute(
+            """
+            WITH vacancy_application_stats AS (
+                SELECT v.vacancy_id,
+                       v.company_name,
+                       v.job_name,
+                       COUNT(a.application_id)::int AS total_applications,
+                       COUNT(DISTINCT u.user_id)::int AS applicant_count,
+                       COUNT(a.application_id) FILTER (
+                           WHERE a.status = 'submitted'
+                       )::int AS submitted_count,
+                       COUNT(a.application_id) FILTER (
+                           WHERE a.status = 'accepted'
+                       )::int AS accepted_count,
+                       COUNT(a.application_id) FILTER (
+                           WHERE a.status = 'rejected'
+                       )::int AS rejected_count
+                FROM vacancies AS v
+                LEFT JOIN applications AS a ON a.vacancy_id = v.vacancy_id
+                LEFT JOIN students AS s ON s.student_id = a.student_id
+                LEFT JOIN users AS u ON u.user_id = s.user_id
+                GROUP BY v.vacancy_id, v.company_name, v.job_name
+            )
+            SELECT vacancy_id,
+                   company_name,
+                   job_name,
+                   total_applications,
+                   applicant_count,
+                   submitted_count,
+                   accepted_count,
+                   rejected_count
+            FROM vacancy_application_stats
+            ORDER BY company_name, job_name, vacancy_id
+            """
+        )
+        return cursor.fetchall()
+
+
 def get_parking_slots():
     with _transaction() as cursor:
         actor = _actor(cursor)
