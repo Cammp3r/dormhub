@@ -74,13 +74,13 @@ class VacanciesPage(ctk.CTkScrollableFrame):
 
 
 PAGES = [
-    ("💬  Чати кімнат", ChatsPage),
-    ("📢  Оголошення", AnnouncementsPage),
-    ("🔧  Мої звернення", RequestsPage),
-    ("💼  Вакансії", VacanciesPage),
-    ("🅿️  Паркінг", ParkingPage),
-    ("🚪  Моя кімната", RoomPage),
-    ("👤  Профіль", ProfilePage),
+    ("Чати кімнат", ChatsPage),
+    ("Оголошення", AnnouncementsPage),
+    ("Мої звернення", RequestsPage),
+    ("Вакансії", VacanciesPage),
+    ("Паркінг", ParkingPage),
+    ("Моя кімната", RoomPage),
+    ("Профіль", ProfilePage),
 ]
 
 
@@ -104,7 +104,7 @@ class App(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
         panel = ctk.CTkFrame(self, corner_radius=16)
         panel.grid(row=0, column=0, padx=24, pady=24)
-        ctk.CTkLabel(panel, text="🏠 DormHub", font=theme.font(28, bold=True)).pack(
+        ctk.CTkLabel(panel, text="DormHub", font=theme.font(28, bold=True)).pack(
             padx=32, pady=(28, 8))
         ctk.CTkLabel(panel, text="Вхід до акаунта", font=theme.font(18)).pack(pady=(0, 16))
         ctk.CTkLabel(panel, text="Ім’я", anchor="w").pack(fill="x", padx=32)
@@ -151,7 +151,7 @@ class App(ctk.CTk):
         sidebar.grid(row=0, column=0, sticky="ns")
         sidebar.grid_propagate(False)
 
-        ctk.CTkLabel(sidebar, text="🏠 DormHub", font=theme.font(22, bold=True)).pack(pady=(24, 4), padx=20, anchor="w")
+        ctk.CTkLabel(sidebar, text="DormHub", font=theme.font(22, bold=True)).pack(pady=(24, 4), padx=20, anchor="w")
         self.sidebar_name = ctk.CTkLabel(sidebar, text=repo.get_user_name(self.user), text_color=theme.MUTED,
                      font=theme.font(12))
         self.sidebar_name.pack(padx=20, anchor="w", pady=(0, 20))
@@ -159,7 +159,7 @@ class App(ctk.CTk):
         self.nav_buttons = {}
         navigation = list(PAGES)
         if repo.is_dorm_admin(self.user['user_id']):
-            navigation.insert(0, ('⚙  Адміністрування', AdminPage))
+            navigation.insert(0, ('Адміністрування', AdminPage))
         nav = ctk.CTkScrollableFrame(sidebar, fg_color='transparent')
         nav.pack(fill='both', expand=True)
         for text, page_cls in navigation:

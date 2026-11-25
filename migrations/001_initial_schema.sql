@@ -1,8 +1,3 @@
--- Схема створюється послідовними міграціями.
--- Запустіть: .venv\Scripts\python migrate.py
--- Старий руйнівний SQL більше не використовується.
-
-
 CREATE TYPE student_status AS ENUM ('enrolled', 'on_leave', 'graduated', 'expelled');
 CREATE TYPE user_status AS ENUM ('active', 'blocked');
 CREATE TYPE application_status AS ENUM ('submitted', 'accepted', 'rejected');

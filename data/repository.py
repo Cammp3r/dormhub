@@ -358,7 +358,6 @@ def create_vacancy(company_name, job_name):
 
 
 def get_vacancy_application_report():
-    """Підсумовує кількість заявок і заявників за кожною вакансією."""
     with _transaction() as cursor:
         _actor(cursor, admin=True)
         cursor.execute(
@@ -467,7 +466,7 @@ def logout():
     current_user = None
 
 
-# Операції адміністрації та спільноти. Права перевіряються при кожному запиті.
+# Операції адміністрації та спільноти
 def get_request_categories():
     return [row['name'] for row in _fetch_all(
         'SELECT name FROM request_categories ORDER BY sort_order, name')]
@@ -479,7 +478,6 @@ def get_request_statuses():
 
 
 def setup_first_admin(dorm_number, address, first_name, last_name, email):
-    """Початкове налаштування через локальний CLI з доступом до БД, не через вхід у UI."""
     try:
         dorm_number = int(dorm_number)
     except ValueError:
@@ -491,7 +489,6 @@ def setup_first_admin(dorm_number, address, first_name, last_name, email):
     last_name = _required(last_name, 'Прізвище', 50)
     email = _required(email, 'Email', 150)
     with _transaction() as cursor:
-        # Першого адміністратора можна створити лише один раз, зокрема при одночасному запуску CLI.
         cursor.execute('LOCK TABLE dorm_admins IN EXCLUSIVE MODE')
         cursor.execute('SELECT 1 FROM dorm_admins LIMIT 1')
         if cursor.fetchone():
@@ -925,7 +922,6 @@ def get_requests(admin=False, status="Усі"):
 
 
 def get_repeated_request_report():
-    """Показує категорії звернень, які повторюються щонайменше двічі на поверсі."""
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
         cursor.execute(

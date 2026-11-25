@@ -24,14 +24,14 @@ class AnnouncementsPage(DataPage):
             card = theme.card(self)
             label(card, row['title'], bold=True)
             label(card, row['body'])
-            label(card, f"{row['author_name']} · {row['created_at']:%d.%m.%Y %H:%M}")
+            label(card, f"{row['author_name']}, {row['created_at']:%d.%m.%Y %H:%M}")
             self.details(card, row)
             if admin:
                 button(card, 'Редагувати', lambda r=row: self.edit(r))
                 button(card, 'Видалити', lambda r=row: self.remove(r))
 
     def details(self, card, row):
-        label(card, f"Адресат: гуртожиток №{row['dorm_number']} · {row['dorm_address']}")
+        label(card, f"Адресат: гуртожиток №{row['dorm_number']}, {row['dorm_address']}")
 
     def edit(self, row=None):
         row = row or {}
