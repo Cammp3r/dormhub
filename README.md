@@ -25,6 +25,56 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## Запуск у Docker Compose (з графічним інтерфейсом)
+
+Docker Compose запускає PostgreSQL і весь графічний застосунок у контейнерах.
+Вікно CustomTkinter відображається у браузері через noVNC.
+
+1. Встановіть і запустіть Docker Desktop.
+2. Якщо файлу `.env` ще немає, створіть його з шаблону у PowerShell:
+
+   ```powershell
+   Copy-Item .env.example .env
+   ```
+
+3. Відкрийте `.env` і замініть `DB_PASSWORD` на свій пароль. Якщо порт `5432`
+   або `6080` уже використовується, змініть відповідно `POSTGRES_HOST_PORT`
+   або `NOVNC_HOST_PORT`.
+4. У терміналі з кореня проєкту запустіть:
+
+   ```powershell
+   docker compose up --build -d
+   ```
+
+   Перший запуск завантажить базові образи, збере застосунок, запустить PostgreSQL
+   і автоматично застосує міграції.
+5. Створіть першого адміністратора:
+
+   ```powershell
+   docker compose exec app /opt/venv/bin/python setup_admin.py
+   ```
+
+6. Відкрийте `http://localhost:6080/vnc.html?autoconnect=true&resize=scale`.
+   Застосунок має відкритися у браузерному вікні. Порт noVNC прив’язаний лише
+   до локального комп’ютера.
+
+Зупинити контейнери, зберігши дані:
+
+```powershell
+docker compose down
+```
+
+Для запуску після змін у Python-коді або залежностях перебудуйте образ:
+
+```powershell
+docker compose up --build -d
+```
+
+Дані PostgreSQL зберігаються у Docker volume. **Не використовуйте**
+`docker compose down -v`, якщо хочете зберегти базу: прапорець `-v` видаляє
+volume разом із даними. База в Docker окрема від вашої попередньої локальної БД;
+наявні локальні дані автоматично не копіюються.
+
 ## Підключення PostgreSQL
 
 Для **нової або наявної бази** створіть базу PostgreSQL і запустіть:
