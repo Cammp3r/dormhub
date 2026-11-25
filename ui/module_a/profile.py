@@ -62,8 +62,8 @@ class ProfilePage(ctk.CTkScrollableFrame):
         self.name_label.configure(text=repo.get_user_name(self.user))
         self.details_label.configure(text=self._details_text())
         self.winfo_toplevel().sidebar_name.configure(text=repo.get_user_name(self.user))
-        self.status.configure(text="✓ Збережено", text_color="#10B981")
+        self.status.configure(text="Збережено", text_color="#10B981")
 
     def _details_text(self):
         birth_date = self.user.get("date_of_birth") or "не вказано"
-        return f"{self.user['email']}  ·  Дата народження: {birth_date}  ·  {self.role}"
+        return f"{self.user['email']}, дата народження: {birth_date}, {self.role}"

@@ -20,7 +20,7 @@ class RoomPage(ctk.CTkScrollableFrame):
         info = theme.card(self)
         ctk.CTkLabel(info, text=f"Кімната {room['room_number']}", font=theme.font(22, bold=True)).pack(
             anchor="w", padx=20, pady=(16, 0))
-        ctk.CTkLabel(info, text=f"Гуртожиток №{room['dorm_number']}  ·  {room['address']}",
+        ctk.CTkLabel(info, text=f"Гуртожиток №{room['dorm_number']}, {room['address']}",
                      text_color=theme.MUTED).pack(anchor="w", padx=20)
 
         stats = ctk.CTkFrame(info, fg_color="transparent")

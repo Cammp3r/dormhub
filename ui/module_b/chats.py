@@ -64,7 +64,7 @@ class ChatsPage(ctk.CTkFrame):
             item.pack(fill="x", pady=2)
             title = ctk.CTkLabel(
                 item,
-                text=f"💬  {chat['title']}",
+                text=chat["title"],
                 anchor="w",
                 font=theme.font(14, bold=True),
                 text_color="white" if selected else None,
@@ -72,7 +72,7 @@ class ChatsPage(ctk.CTkFrame):
             title.pack(fill="x", padx=10, pady=(8, 0))
             preview = chat["last_message"] or "Немає повідомлень"
             if len(preview) > 34:
-                preview = preview[:34] + "…"
+                preview = preview[:34] + "..."
             subtitle = ctk.CTkLabel(
                 item,
                 text=preview,
@@ -91,7 +91,7 @@ class ChatsPage(ctk.CTkFrame):
             widget.destroy()
         ctk.CTkLabel(
             self.right,
-            text="Оберіть чат зліва 💬",
+            text="Оберіть чат зліва",
             font=theme.font(18),
             text_color=theme.MUTED,
         ).place(relx=0.5, rely=0.5, anchor="center")
@@ -128,7 +128,7 @@ class ChatsPage(ctk.CTkFrame):
         bottom = ctk.CTkFrame(self.right, fg_color="transparent")
         bottom.pack(fill="x", padx=16, pady=(0, 16))
         self.input = ctk.CTkEntry(
-            bottom, placeholder_text="Напишіть повідомлення…", height=40
+            bottom, placeholder_text="Напишіть повідомлення...", height=40
         )
         self.input.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.input.bind("<Return>", lambda event: self.send())

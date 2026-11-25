@@ -26,7 +26,7 @@ class RequestsPage(DataPage):
                     floor = f"поверх {row['floor']}" if row['floor'] is not None else 'поверх не вказано'
                     label(
                         card,
-                        f"{row['category']} · {floor}: "
+                        f"{row['category']}, {floor}: "
                         f"{row['request_count']} звернення, "
                         f"{row['resident_count']} мешканців; "
                         f"ранг у категорії: {row['category_rank']}",
@@ -38,11 +38,11 @@ class RequestsPage(DataPage):
             self.empty()
         for row in rows:
             card = theme.card(self)
-            label(card, f"№{row['request_id']} · {row['category']} · {row['status']}", bold=True)
-            label(card, f"Кімната {row['room_number']} · {row['author_name']}")
+            label(card, f"№{row['request_id']}, {row['category']}, {row['status']}", bold=True)
+            label(card, f"Кімната {row['room_number']}, {row['author_name']}")
             label(card, row['description'])
             for entry in row['history']:
-                label(card, f"{entry['changed_at']:%d.%m.%Y %H:%M} · {entry['status']} · "
+                label(card, f"{entry['changed_at']:%d.%m.%Y %H:%M}, {entry['status']}, "
                       f"{entry['changed_by_name']}\n{entry['response']}")
             if self.admin:
                 button(card, 'Опрацювати', lambda r=row: self.guard(lambda: self.edit(r)))

@@ -62,8 +62,8 @@ class ResidentsPage(DataPage):
         for row in rows:
             card = theme.card(self)
             label(card, repo.get_user_name(row), bold=True)
-            label(card, f"{row['email']} · Кімната: {row['room_number'] or 'не поселено'}")
-            label(card, f"Дата народження: {row['date_of_birth'] or 'не вказано'} · Рік вступу: {row['enrollment_year'] or 'не вказано'}")
+            label(card, f"{row['email']}, кімната: {row['room_number'] or 'не поселено'}")
+            label(card, f"Дата народження: {row['date_of_birth'] or 'не вказано'}, рік вступу: {row['enrollment_year'] or 'не вказано'}")
             button(card, 'Редагувати', lambda r=row: self.edit(r))
         total_count = rows[0]['total_count'] if rows else 0
         self.render_pagination(total_count)
@@ -133,9 +133,9 @@ class RoomsPage(DataPage):
             self.empty()
         for row in rows:
             card = theme.card(self)
-            label(card, f"Кімната {row['room_number']} · Поверх {row['floor']}", bold=True)
-            label(card, f"Зайнято: {row['occupied']}/{row['capacity']} · "
-                  f"Вільно: {row['capacity'] - row['occupied']} · "
+            label(card, f"Кімната {row['room_number']}, поверх {row['floor']}", bold=True)
+            label(card, f"Зайнято: {row['occupied']}/{row['capacity']}, "
+                  f"вільно: {row['capacity'] - row['occupied']}, "
                   + ('Відкрита для поселення' if row['is_available'] else 'Закрита для поселення'))
             for place in row['places']:
                 state = 'зайняте' if place['occupied'] else (
@@ -179,7 +179,7 @@ class ResidenciesPage(DataPage):
             location = 'не поселено'
             if row['room_id']:
                 location = f"кімната {row['room_number']}, місце {row['place_number']}"
-            label(card, f"{repo.get_user_name(row)} · {location}", bold=True)
+            label(card, f"{repo.get_user_name(row)}, {location}", bold=True)
             button(card, 'Переселити' if row['room_id'] else 'Поселити', lambda r=row: self.move(r))
             if row['room_id']:
                 button(card, 'Виселити', lambda r=row: self.move(r, checkout=True))
@@ -187,8 +187,8 @@ class ResidenciesPage(DataPage):
         for row in repo.get_residency_history():
             card = theme.card(self)
             end = row['ended_at'].strftime('%d.%m.%Y %H:%M') if row['ended_at'] else 'проживає'
-            label(card, f"{row['resident_name']} · Кімната {row['room_number']}, місце {row['place_number']}", bold=True)
-            label(card, f"{row['started_at']:%d.%m.%Y %H:%M} → {end}\nПричина поселення: {row['start_reason']}")
+            label(card, f"{row['resident_name']}, кімната {row['room_number']}, місце {row['place_number']}", bold=True)
+            label(card, f"{row['started_at']:%d.%m.%Y %H:%M} - {end}\nПричина поселення: {row['start_reason']}")
             if row['end_reason']:
                 label(card, 'Причина завершення: ' + row['end_reason'])
 
@@ -228,16 +228,16 @@ class VacancyAnalyticsPage(DataPage):
             return
         for row in rows:
             card = theme.card(self)
-            label(card, f"{row['company_name']} · {row['job_name']}", bold=True)
+            label(card, f"{row['company_name']}, {row['job_name']}", bold=True)
             label(
                 card,
-                f"Заявок: {row['total_applications']} · "
+                f"Заявок: {row['total_applications']}, "
                 f"унікальних заявників: {row['applicant_count']}",
             )
             label(
                 card,
-                f"Подано: {row['submitted_count']} · "
-                f"прийнято: {row['accepted_count']} · "
+                f"Подано: {row['submitted_count']}, "
+                f"прийнято: {row['accepted_count']}, "
                 f"відхилено: {row['rejected_count']}",
             )
 

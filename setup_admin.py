@@ -1,4 +1,4 @@
-"""Створення першого адміністратора з реальними даними, введеними власником БД."""
+"""Створення  адміністратора"""
 from psycopg2 import Error as DatabaseError
 
 from data.repository import setup_first_admin
