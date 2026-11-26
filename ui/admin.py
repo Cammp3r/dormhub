@@ -254,6 +254,64 @@ class VacancyAnalyticsPage(DataPage):
         )
 
 
+class ChatsAdminPage(DataPage):
+    def __init__(self, master, user):
+        super().__init__(master, user)
+        self.render()
+
+    def render(self):
+        self.clear('Керування чатами')
+        label(self, 'Створіть груповий чат і виберіть мешканців свого гуртожитку.')
+
+        self.title_entry = ctk.CTkEntry(
+            self, placeholder_text='Назва чату', height=40
+        )
+        self.title_entry.pack(fill='x', padx=24, pady=8)
+
+        label(self, 'Учасники')
+        candidates = repo.get_admin_chat_candidates()
+        self.member_vars = {}
+        if not candidates:
+            self.empty('Немає активних мешканців для додавання.')
+        else:
+            for resident in candidates:
+                location = (
+                    f", кімната {resident['room_number']}"
+                    if resident['room_number']
+                    else ', не поселений'
+                )
+                name = f"{resident['first_name']} {resident['last_name']}{location}"
+                variable = ctk.StringVar(value='off')
+                checkbox = ctk.CTkCheckBox(
+                    self,
+                    text=name,
+                    variable=variable,
+                    onvalue='on',
+                    offvalue='off',
+                )
+                checkbox.pack(anchor='w', padx=24, pady=3)
+                self.member_vars[resident['user_id']] = variable
+
+        button(self, 'Створити чат', self.create_chat)
+        label(self, 'Створені групові чати', bold=True)
+        chats = repo.get_admin_group_chats()
+        if not chats:
+            self.empty('Групових чатів ще немає.')
+        for chat in chats:
+            card = theme.card(self)
+            label(card, chat['title'], bold=True)
+            label(card, f"Учасників: {chat['member_count']} (включно з адміністратором)")
+
+    def create_chat(self):
+        title = self.title_entry.get()
+        selected_ids = [
+            user_id
+            for user_id, variable in self.member_vars.items()
+            if variable.get() == 'on'
+        ]
+        self.run(lambda: repo.create_group_chat(title, selected_ids))
+
+
 class AdminPage(ctk.CTkFrame):
     def __init__(self, master, user):
         super().__init__(master, fg_color='transparent')
@@ -267,6 +325,7 @@ class AdminPage(ctk.CTkFrame):
             'Поселення': ResidenciesPage,
             'Звернення': RequestsPage,
             'Аналітика вакансій': VacancyAnalyticsPage,
+            'Чати': ChatsAdminPage,
         }
         for name in self.tab_classes:
             tabs.add(name)

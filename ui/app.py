@@ -74,7 +74,7 @@ class VacanciesPage(ctk.CTkScrollableFrame):
 
 
 PAGES = [
-    ("Чати кімнат", ChatsPage),
+    ("Чати", ChatsPage),
     ("Оголошення", AnnouncementsPage),
     ("Мої звернення", RequestsPage),
     ("Вакансії", VacanciesPage),
