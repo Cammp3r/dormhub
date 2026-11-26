@@ -23,11 +23,11 @@ class ChatsPage(ctk.CTkFrame):
         left.grid_propagate(False)
 
         ctk.CTkLabel(
-            left, text="Чати кімнат", font=theme.font(22, bold=True)
+            left, text="Чати", font=theme.font(22, bold=True)
         ).pack(anchor="w", padx=16, pady=(16, 12))
         ctk.CTkLabel(
             left,
-            text="Чат доступний мешканцям відповідної кімнати.",
+            text="Чати доступні лише їхнім учасникам.",
             text_color=theme.MUTED,
             wraplength=260,
             justify="left",
@@ -49,7 +49,7 @@ class ChatsPage(ctk.CTkFrame):
         if not chats:
             ctk.CTkLabel(
                 self.chat_list,
-                text="Ви не заселені в кімнату.",
+                text="Вам поки що не призначено жодного чату.",
                 text_color=theme.MUTED,
             ).pack(padx=12, pady=12)
             return

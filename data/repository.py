@@ -685,9 +685,6 @@ def save_room(room_number, floor, capacity, is_available=True, room_id=None):
                            (room_id, capacity))
             cursor.execute("""UPDATE rooms SET room_number=%s, floor=%s, capacity=%s, is_available=%s
                 WHERE room_id=%s""", (number, floor, capacity, is_available, room_id))
-        cursor.execute("INSERT INTO room_chats (room_id) VALUES (%s) ON CONFLICT (room_id) DO NOTHING", (room_id,))
-
-
 def save_place(place_id, is_available):
     with _transaction() as cursor:
         actor = _actor(cursor, admin=True)
@@ -982,6 +979,100 @@ def update_request(request_id, status, response):
             VALUES (%s, %s, %s, %s)""", (request_id, actor['user_id'], status, response))
 
 
+def get_admin_chat_candidates():
+    with _transaction() as cursor:
+        actor = _actor(cursor, admin=True)
+        cursor.execute(
+            """
+            SELECT u.user_id, u.first_name, u.last_name, r.room_number
+            FROM users AS u
+            INNER JOIN students AS s ON s.user_id = u.user_id
+            LEFT JOIN rooms AS r ON r.room_id = s.room_id
+            WHERE u.dorm_id = %s AND u.status = 'active'
+            ORDER BY u.last_name, u.first_name, u.user_id
+            """,
+            (actor["dorm_id"],),
+        )
+        return cursor.fetchall()
+
+
+def get_admin_group_chats():
+    with _transaction() as cursor:
+        actor = _actor(cursor, admin=True)
+        cursor.execute(
+            """
+            SELECT rc.room_chat_id AS id, rc.title,
+                   COUNT(rcm.user_id)::int AS member_count
+            FROM room_chats AS rc
+            LEFT JOIN room_chat_members AS rcm
+              ON rcm.room_chat_id = rc.room_chat_id
+            WHERE rc.dorm_id = %s AND rc.room_id IS NULL
+            GROUP BY rc.room_chat_id, rc.title
+            ORDER BY rc.title, rc.room_chat_id
+            """,
+            (actor["dorm_id"],),
+        )
+        return cursor.fetchall()
+
+
+def create_group_chat(title, member_user_ids):
+    title = _required(title, "Назва чату", 100)
+    if not isinstance(member_user_ids, (list, tuple, set)):
+        raise ValueError("Оберіть мешканців для чату")
+    if any(isinstance(user_id, bool) for user_id in member_user_ids):
+        raise ValueError("Некоректний список учасників")
+    try:
+        selected_ids = [int(user_id) for user_id in member_user_ids]
+    except (TypeError, ValueError):
+        raise ValueError("Некоректний список учасників") from None
+    if any(user_id < 1 for user_id in selected_ids):
+        raise ValueError("Некоректний список учасників")
+    if not selected_ids:
+        raise ValueError("Оберіть хоча б одного мешканця")
+    if len(selected_ids) != len(set(selected_ids)):
+        raise ValueError("Учасника не можна додати двічі")
+
+    with _transaction() as cursor:
+        actor = _actor(cursor, admin=True)
+        cursor.execute(
+            """
+            SELECT u.user_id
+            FROM users AS u
+            INNER JOIN students AS s ON s.user_id = u.user_id
+            WHERE u.dorm_id = %s
+              AND u.status = 'active'
+              AND u.user_id = ANY(%s)
+            ORDER BY u.user_id
+            FOR SHARE OF u, s
+            """,
+            (actor["dorm_id"], selected_ids),
+        )
+        valid_ids = {row["user_id"] for row in cursor.fetchall()}
+        if valid_ids != set(selected_ids):
+            raise PermissionError(
+                "Можна додавати лише активних мешканців вашого гуртожитку"
+            )
+
+        cursor.execute(
+            """
+            INSERT INTO room_chats (room_id, dorm_id, title)
+            VALUES (NULL, %s, %s)
+            RETURNING room_chat_id
+            """,
+            (actor["dorm_id"], title),
+        )
+        chat_id = cursor.fetchone()["room_chat_id"]
+        for user_id in sorted(set(selected_ids) | {actor["user_id"]}):
+            cursor.execute(
+                """
+                INSERT INTO room_chat_members (room_chat_id, user_id, added_by)
+                VALUES (%s, %s, %s)
+                """,
+                (chat_id, user_id, actor["user_id"]),
+            )
+        return chat_id
+
+
 def get_room_chats_for_user(user_id):
     with _transaction() as cursor:
         actor = _actor(cursor)
@@ -990,7 +1081,10 @@ def get_room_chats_for_user(user_id):
         cursor.execute(
             """
             SELECT rc.room_chat_id AS id,
-                   'Кімната ' || r.room_number AS title,
+                   CASE WHEN rc.room_id IS NULL
+                        THEN rc.title
+                        ELSE 'Кімната ' || r.room_number
+                   END AS title,
                    TRUE AS is_group,
                    (
                        SELECT rcm.sent_at
@@ -1007,12 +1101,21 @@ def get_room_chats_for_user(user_id):
                        LIMIT 1
                    ) AS last_message
             FROM room_chats AS rc
-            INNER JOIN rooms AS r ON r.room_id = rc.room_id
-            INNER JOIN students AS s ON s.room_id = r.room_id
-            WHERE s.user_id = %s
-            ORDER BY r.dorm_id, r.room_number
+            LEFT JOIN rooms AS r ON r.room_id = rc.room_id
+            WHERE EXISTS (
+                      SELECT 1
+                      FROM room_chat_members AS member
+                      WHERE member.room_chat_id = rc.room_chat_id
+                        AND member.user_id = %s
+                  )
+               OR (rc.room_id IS NOT NULL AND EXISTS (
+                      SELECT 1
+                      FROM students AS s
+                      WHERE s.room_id = rc.room_id AND s.user_id = %s
+                  ))
+            ORDER BY rc.dorm_id, title, rc.room_chat_id
             """,
-            (user_id,),
+            (user_id, user_id),
         )
         return cursor.fetchall()
 
@@ -1024,38 +1127,51 @@ def get_room_chat_members(chat_id, user_id):
             raise PermissionError("Не можна переглядати чати іншого користувача")
         cursor.execute(
             """
-            SELECT u.user_id, u.first_name, u.last_name, u.email
-            FROM users AS u
-            INNER JOIN students AS s ON s.user_id = u.user_id
-            INNER JOIN room_chats AS rc ON rc.room_id = s.room_id
+            SELECT rc.room_id
+            FROM room_chats AS rc
             WHERE rc.room_chat_id = %s
-              AND EXISTS (
-                  SELECT 1
-                  FROM students AS current_student
-                  INNER JOIN room_chats AS current_chat
-                      ON current_chat.room_id = current_student.room_id
-                  WHERE current_student.user_id = %s
-                    AND current_chat.room_chat_id = rc.room_chat_id
+              AND (
+                  EXISTS (
+                      SELECT 1 FROM room_chat_members AS member
+                      WHERE member.room_chat_id = rc.room_chat_id
+                        AND member.user_id = %s
+                  )
+                  OR (rc.room_id IS NOT NULL AND EXISTS (
+                      SELECT 1 FROM students AS current_student
+                      WHERE current_student.room_id = rc.room_id
+                        AND current_student.user_id = %s
+                  ))
               )
-            ORDER BY u.user_id
             """,
-            (chat_id, user_id),
+            (chat_id, user_id, user_id),
         )
-        members = cursor.fetchall()
-        if not members:
+        chat = cursor.fetchone()
+        if not chat:
+            raise PermissionError("Користувач не має доступу до цього чату")
+
+        if chat["room_id"] is None:
             cursor.execute(
                 """
-                SELECT 1
-                FROM room_chats AS rc
-                INNER JOIN students AS current_student
-                    ON current_student.room_id = rc.room_id
-                WHERE rc.room_chat_id = %s AND current_student.user_id = %s
+                SELECT u.user_id, u.first_name, u.last_name, u.email
+                FROM room_chat_members AS member
+                INNER JOIN users AS u ON u.user_id = member.user_id
+                WHERE member.room_chat_id = %s
+                ORDER BY u.user_id
                 """,
-                (chat_id, user_id),
+                (chat_id,),
             )
-            if not cursor.fetchone():
-                raise PermissionError("Користувач не має доступу до цього чату")
-        return members
+        else:
+            cursor.execute(
+                """
+                SELECT u.user_id, u.first_name, u.last_name, u.email
+                FROM users AS u
+                INNER JOIN students AS s ON s.user_id = u.user_id
+                WHERE s.room_id = %s
+                ORDER BY u.user_id
+                """,
+                (chat["room_id"],),
+            )
+        return cursor.fetchall()
 
 
 def get_room_chat_messages(chat_id, user_id, limit=30, offset=0):
@@ -1077,16 +1193,25 @@ def get_room_chat_messages(chat_id, user_id, limit=30, offset=0):
             WHERE rcm.room_chat_id = %s
               AND EXISTS (
                   SELECT 1
-                  FROM students AS current_student
-                  INNER JOIN room_chats AS current_chat
-                      ON current_chat.room_id = current_student.room_id
-                  WHERE current_student.user_id = %s
-                    AND current_chat.room_chat_id = rcm.room_chat_id
+                  FROM room_chats AS rc
+                  WHERE rc.room_chat_id = rcm.room_chat_id
+                    AND (
+                        EXISTS (
+                            SELECT 1 FROM room_chat_members AS member
+                            WHERE member.room_chat_id = rc.room_chat_id
+                              AND member.user_id = %s
+                        )
+                        OR (rc.room_id IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM students AS current_student
+                            WHERE current_student.room_id = rc.room_id
+                              AND current_student.user_id = %s
+                        ))
+                    )
               )
             ORDER BY rcm.sent_at DESC, rcm.message_id DESC
             LIMIT %s OFFSET %s
             """,
-            (chat_id, user_id, limit, offset),
+            (chat_id, user_id, user_id, limit, offset),
         )
         return cursor.fetchall()
 
@@ -1109,11 +1234,20 @@ def send_room_chat_message(chat_id, user_id, text):
                 INSERT INTO room_chat_messages (room_chat_id, user_id, message)
                 SELECT rc.room_chat_id, %s, %s
                 FROM room_chats AS rc
-                INNER JOIN students AS s ON s.room_id = rc.room_id
                 WHERE rc.room_chat_id = %s
-                  AND s.user_id = %s
+                  AND (
+                      EXISTS (
+                          SELECT 1 FROM room_chat_members AS member
+                          WHERE member.room_chat_id = rc.room_chat_id
+                            AND member.user_id = %s
+                      )
+                      OR (rc.room_id IS NOT NULL AND EXISTS (
+                          SELECT 1 FROM students AS s
+                          WHERE s.room_id = rc.room_id AND s.user_id = %s
+                      ))
+                  )
                 """,
-                (user_id, text, chat_id, user_id),
+                (user_id, text, chat_id, user_id, user_id),
             )
             if cursor.rowcount == 0:
                 raise PermissionError("Користувач не має доступу до цього чату")
